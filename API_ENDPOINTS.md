@@ -625,12 +625,16 @@ Content-Type: application/json
 ---
 
 ### 6. Get Car Revenue Statistics - `/api/trips/stats/revenue`
-**GET** `http://localhost:3000/api/trips/stats/revenue`
+**GET** `http://localhost:3000/api/trips/stats/revenue?month=4&year=2026`
 
 **Headers:**
 ```
 Authorization: Bearer JWT_TOKEN
 ```
+
+**Query Parameters (Optional):**
+- `month` - Filter by month (1-12). Defaults to current month.
+- `year` - Filter by year (YYYY). Defaults to current year.
 
 **Response (200):**
 ```json
@@ -638,6 +642,12 @@ Authorization: Bearer JWT_TOKEN
   "success": true,
   "message": "Car revenue statistics retrieved successfully",
   "data": {
+    "period": {
+      "month": 4,
+      "year": 2026,
+      "startDate": "2026-04-01",
+      "endDate": "2026-04-30"
+    },
     "overall_summary": {
       "total_revenue": 7300.00,
       "total_trips": 5
@@ -708,7 +718,131 @@ Authorization: Bearer JWT_TOKEN
 
 ---
 
-## 🧪 cURL EXAMPLES
+## 💸 EXPENSE MANAGEMENT ENDPOINTS
+
+### 1. Create Expense - `/api/expenses`
+**POST** `http://localhost:3000/api/expenses`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "date": "2026-04-28",
+  "reason": "Fuel Refill",
+  "description": "Full tank at Shell station",
+  "amount": 4500.50
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "message": "Expense created successfully",
+  "data": {
+    "id": "770e8400-e29b-41d4-a716-446655440200",
+    "driver_id": "550e8400-e29b-41d4-a716-446655440001",
+    "car_no": "ABC123",
+    "driver_name": "John Driver",
+    "date": "2026-04-28",
+    "reason": "Fuel Refill",
+    "description": "Full tank at Shell station",
+    "amount": 4500.50,
+    "status": "pending",
+    "created_at": "2026-04-28T15:30:00Z"
+  }
+}
+```
+
+---
+
+### 2. Get All Expenses - `/api/expenses`
+**GET** `http://localhost:3000/api/expenses?status=pending&driver_id=...`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+```
+
+---
+
+### 3. Update Expense - `/api/expenses/:expenseId`
+**PUT** `http://localhost:3000/api/expenses/770e8400-e29b-41d4-a716-446655440200`
+
+---
+
+### 4. Delete Expense - `/api/expenses/:expenseId`
+**DELETE** `http://localhost:3000/api/expenses/770e8400-e29b-41d4-a716-446655440200`
+
+---
+
+## 💰 SALARY ADVANCE ENDPOINTS (ADMIN ONLY)
+
+### 1. Create Salary Advance - `/api/advances`
+**POST** `http://localhost:3000/api/advances`
+
+**Headers:**
+```
+Authorization: Bearer ADMIN_JWT_TOKEN
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "driver_id": "550e8400-e29b-41d4-a716-446655440001",
+  "amount": 5000.00,
+  "date": "2026-04-28",
+  "description": "Advance for medical emergency"
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "message": "Salary advance created successfully",
+  "data": {
+    "id": "880e8400-e29b-41d4-a716-446655440300",
+    "driver_id": "550e8400-e29b-41d4-a716-446655440001",
+    "driver_name": "John Driver",
+    "car_no": "ABC123",
+    "amount": 5000.00,
+    "date": "2026-04-28",
+    "description": "Advance for medical emergency",
+    "status": "unpaid",
+    "created_at": "2026-04-28T15:30:00Z"
+  }
+}
+```
+
+---
+
+### 2. Get All Advances - `/api/advances`
+**GET** `http://localhost:3000/api/advances`
+
+---
+
+### 3. Update Advance Status - `/api/advances/:advanceId`
+**PUT** `http://localhost:3000/api/advances/880e8400-e29b-41d4-a716-446655440300`
+*(Example: Update status to 'deducted' when processing salary)*
+
+**Request Body:**
+```json
+{
+  "status": "deducted"
+}
+```
+
+---
+
+### 4. Delete Advance - `/api/advances/:advanceId`
+**DELETE** `http://localhost:3000/api/advances/880e8400-e29b-41d4-a716-446655440300`
 
 ### Login with Email
 ```bash

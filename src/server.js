@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
 const tripRoutes = require('./routes/tripRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
+const advanceRoutes = require('./routes/advanceRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -39,6 +41,8 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/trips', tripRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/advances', advanceRoutes);
 
 // 404 handler
 app.use((req, res) => {

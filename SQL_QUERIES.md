@@ -210,3 +210,45 @@ INSERT INTO users (username, email, password_hash, name, role, mobile_no, car_no
 - Username is optional (can be created from email)
 - Password stored as **plain text** (development only!)
 - All new tables should use `email` for login, not `username`
+
+---
+
+## 🚀 EXPENSES & ADVANCES TABLES
+
+### Expenses Table
+```sql
+CREATE TABLE IF NOT EXISTS expenses (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  driver_id UUID REFERENCES users(id),
+  car_no VARCHAR(20),
+  driver_name VARCHAR(100),
+  date DATE NOT NULL,
+  description TEXT,
+  reason VARCHAR(255),
+  amount DECIMAL(10, 2) NOT NULL,
+  status VARCHAR(20) DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_driver_id ON expenses(driver_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_car_no ON expenses(car_no);
+```
+
+### Salary Advances Table
+```sql
+CREATE TABLE IF NOT EXISTS advances (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  driver_id UUID REFERENCES users(id),
+  car_no VARCHAR(20),
+  driver_name VARCHAR(100),
+  amount DECIMAL(10, 2) NOT NULL,
+  date DATE NOT NULL,
+  description TEXT,
+  status VARCHAR(20) DEFAULT 'unpaid',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_advances_driver_id ON advances(driver_id);
+```

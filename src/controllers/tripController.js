@@ -325,9 +325,9 @@ const getTripsByDriver = async (req, res) => {
       }
 
       // Create date range for the specified month
-      // JavaScript months are 0-indexed, so subtract 1
-      const startDate = new Date(yearNum, monthNum - 1, 1).toISOString().split('T')[0];
-      const endDate = new Date(yearNum, monthNum, 0).toISOString().split('T')[0];
+      const startDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-01`;
+      const lastDay = new Date(yearNum, monthNum, 0).getDate();
+      const endDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
       query = query
         .gte('pick_up_date', startDate)
@@ -380,10 +380,24 @@ const getTripsByDriver = async (req, res) => {
 // Get Car Revenue Statistics
 const getCarRevenueStats = async (req, res) => {
   try {
-    // Get all trips grouped by car_no and category with total revenue
+    const now = new Date();
+    let { month, year } = req.query;
+
+    // Default to current month and year if not provided
+    const filterMonth = month ? parseInt(month) : now.getMonth() + 1;
+    const filterYear = year ? parseInt(year) : now.getFullYear();
+
+    // Create date range for the specified month
+    const startDate = `${filterYear}-${String(filterMonth).padStart(2, '0')}-01`;
+    const lastDay = new Date(filterYear, filterMonth, 0).getDate();
+    const endDate = `${filterYear}-${String(filterMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    // Get trips grouped by car_no and category with total revenue within the date range
     const { data: trips, error } = await supabase
       .from('trips')
-      .select('car_no, category, trip_rate');
+      .select('car_no, category, trip_rate, pick_up_date')
+      .gte('pick_up_date', startDate)
+      .lte('pick_up_date', endDate);
 
     if (error) {
       console.error('Error fetching trips:', error);
@@ -447,6 +461,12 @@ const getCarRevenueStats = async (req, res) => {
 
     // Format the response
     const formattedStats = {
+      period: {
+        month: filterMonth,
+        year: filterYear,
+        startDate,
+        endDate
+      },
       overall_summary: {
         total_revenue: stats.overall_total,
         total_trips: trips.length
