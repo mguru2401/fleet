@@ -362,6 +362,352 @@ Authorization: Bearer ADMIN_JWT_TOKEN
 
 ---
 
+## 🚗 TRIP MANAGEMENT ENDPOINTS (All Authenticated Users Can Access)
+
+### 1. Create Trip - `/api/trips`
+**POST** `http://localhost:3000/api/trips`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "pick_up_date": "2026-04-28",
+  "pick_up_time": "09:30:00",
+  "start_km": 1500.50,
+  "end_km": 1650.75,
+  "drop_location": "Airport Terminal 3",
+  "mileage": 150.25,
+  "trip_rate": 2500.00,
+  "category": "uber"
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "message": "Trip created successfully",
+  "data": {
+    "id": "660e8400-e29b-41d4-a716-446655440100",
+    "driver_id": "550e8400-e29b-41d4-a716-446655440000",
+    "car_no": "ABC123",
+    "driver_name": "Admin",
+    "pick_up_date": "2026-04-28",
+    "pick_up_time": "09:30:00",
+    "start_km": 1500.50,
+    "end_km": 1650.75,
+    "drop_location": "Airport Terminal 3",
+    "mileage": 150.25,
+    "trip_rate": 2500.00,
+    "category": "uber",
+    "status": "completed",
+    "created_at": "2026-04-28T15:30:00Z",
+    "updated_at": "2026-04-28T15:30:00Z"
+  }
+}
+```
+
+**Error Response (400):**
+```json
+{
+  "success": false,
+  "message": "All fields are required (pick_up_date, pick_up_time, start_km, end_km, drop_location, mileage, trip_rate, category)"
+}
+```
+
+---
+
+### 2. Get All Trips - `/api/trips`
+**GET** `http://localhost:3000/api/trips?limit=50&offset=0&category=uber&pick_up_date=2026-04-28`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+```
+
+**Query Parameters (Optional):**
+- `limit` - Number of results (default: 50)
+- `offset` - Pagination offset (default: 0)
+- `category` - Filter by category (amazon, ola, uber, other, it)
+- `driver_id` - Filter by driver ID
+- `pick_up_date` - Filter by pickup date (YYYY-MM-DD)
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Trips retrieved successfully",
+  "count": 2,
+  "data": [
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440100",
+      "driver_id": "550e8400-e29b-41d4-a716-446655440000",
+      "car_no": "ABC123",
+      "driver_name": "Admin",
+      "pick_up_date": "2026-04-28",
+      "pick_up_time": "09:30:00",
+      "start_km": 1500.50,
+      "end_km": 1650.75,
+      "drop_location": "Airport Terminal 3",
+      "mileage": 150.25,
+      "trip_rate": 2500.00,
+      "category": "uber",
+      "status": "completed",
+      "created_at": "2026-04-28T15:30:00Z",
+      "updated_at": "2026-04-28T15:30:00Z"
+    },
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440101",
+      "driver_id": "550e8400-e29b-41d4-a716-446655440001",
+      "car_no": "XYZ789",
+      "driver_name": "John Driver",
+      "pick_up_date": "2026-04-28",
+      "pick_up_time": "14:15:00",
+      "start_km": 2000.00,
+      "end_km": 2150.50,
+      "drop_location": "Downtown Mall",
+      "mileage": 150.50,
+      "trip_rate": 1800.00,
+      "category": "amazon",
+      "status": "completed",
+      "created_at": "2026-04-28T14:00:00Z",
+      "updated_at": "2026-04-28T14:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 3. Get Trip by ID - `/api/trips/:tripId`
+**GET** `http://localhost:3000/api/trips/660e8400-e29b-41d4-a716-446655440100`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Trip retrieved successfully",
+  "data": {
+    "id": "660e8400-e29b-41d4-a716-446655440100",
+    "driver_id": "550e8400-e29b-41d4-a716-446655440000",
+    "car_no": "ABC123",
+    "driver_name": "Admin",
+    "pick_up_date": "2026-04-28",
+    "pick_up_time": "09:30:00",
+    "start_km": 1500.50,
+    "end_km": 1650.75,
+    "drop_location": "Airport Terminal 3",
+    "mileage": 150.25,
+    "trip_rate": 2500.00,
+    "category": "uber",
+    "status": "completed",
+    "created_at": "2026-04-28T15:30:00Z",
+    "updated_at": "2026-04-28T15:30:00Z"
+  }
+}
+```
+
+**Error Response (404):**
+```json
+{
+  "success": false,
+  "message": "Trip not found"
+}
+```
+
+---
+
+### 4. Get Trips by Driver ID - `/api/trips/driver/:driverId`
+**GET** `http://localhost:3000/api/trips/driver/550e8400-e29b-41d4-a716-446655440000?limit=50&offset=0&month=1&year=2026&category=uber`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+```
+
+**Query Parameters (Optional):**
+- `limit` - Number of results (default: 50)
+- `offset` - Pagination offset (default: 0)
+- `month` - Filter by month (1-12)
+- `year` - Filter by year (YYYY format)
+- `category` - Filter by category (amazon, ola, uber, other, it)
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Driver trips retrieved successfully",
+  "count": 3,
+  "filters": {
+    "month": 1,
+    "year": 2026,
+    "category": "uber"
+  },
+  "data": [
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440100",
+      "driver_id": "550e8400-e29b-41d4-a716-446655440000",
+      "car_no": "ABC123",
+      "driver_name": "Admin",
+      "pick_up_date": "2026-01-15",
+      "pick_up_time": "09:30:00",
+      "start_km": 1500.50,
+      "end_km": 1650.75,
+      "drop_location": "Airport Terminal 3",
+      "mileage": 150.25,
+      "trip_rate": 2500.00,
+      "category": "uber",
+      "status": "completed",
+      "created_at": "2026-01-15T15:30:00Z",
+      "updated_at": "2026-01-15T15:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 5. Update Trip - `/api/trips/:tripId`
+**PUT** `http://localhost:3000/api/trips/660e8400-e29b-41d4-a716-446655440100`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+Content-Type: application/json
+```
+
+**Request Body (Send Only Fields to Update):**
+```json
+{
+  "end_km": 1700.50,
+  "drop_location": "Airport Terminal 2",
+  "mileage": 200.00,
+  "trip_rate": 3000.00,
+  "status": "completed"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Trip updated successfully",
+  "data": {
+    "id": "660e8400-e29b-41d4-a716-446655440100",
+    "driver_id": "550e8400-e29b-41d4-a716-446655440000",
+    "car_no": "ABC123",
+    "driver_name": "Admin",
+    "pick_up_date": "2026-04-28",
+    "pick_up_time": "09:30:00",
+    "start_km": 1500.50,
+    "end_km": 1700.50,
+    "drop_location": "Airport Terminal 2",
+    "mileage": 200.00,
+    "trip_rate": 3000.00,
+    "category": "uber",
+    "status": "completed",
+    "created_at": "2026-04-28T15:30:00Z",
+    "updated_at": "2026-04-28T15:45:00Z"
+  }
+}
+```
+
+---
+
+### 6. Get Car Revenue Statistics - `/api/trips/stats/revenue`
+**GET** `http://localhost:3000/api/trips/stats/revenue`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Car revenue statistics retrieved successfully",
+  "data": {
+    "overall_summary": {
+      "total_revenue": 7300.00,
+      "total_trips": 5
+    },
+    "by_category": {
+      "uber": {
+        "total_revenue": 2500.00,
+        "trip_count": 1
+      },
+      "amazon": {
+        "total_revenue": 1800.00,
+        "trip_count": 1
+      },
+      "ola": {
+        "total_revenue": 3000.00,
+        "trip_count": 2
+      }
+    },
+    "by_car": {
+      "ABC123": {
+        "total_revenue": 5500.00,
+        "trip_count": 3
+      },
+      "XYZ789": {
+        "total_revenue": 1800.00,
+        "trip_count": 2
+      }
+    },
+    "by_car_and_category": {
+      "ABC123": {
+        "uber": {
+          "total_revenue": 2500.00,
+          "trip_count": 1
+        },
+        "ola": {
+          "total_revenue": 3000.00,
+          "trip_count": 2
+        }
+      },
+      "XYZ789": {
+        "amazon": {
+          "total_revenue": 1800.00,
+          "trip_count": 2
+        }
+      }
+    }
+  }
+}
+```
+
+---
+
+### 7. Delete Trip - `/api/trips/:tripId`
+**DELETE** `http://localhost:3000/api/trips/660e8400-e29b-41d4-a716-446655440100`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Trip deleted successfully"
+}
+```
+
+---
+
 ## 🧪 cURL EXAMPLES
 
 ### Login with Email
@@ -426,6 +772,66 @@ curl -X DELETE http://localhost:3000/api/auth/users/550e8400-e29b-41d4-a716-4466
   -H "Authorization: Bearer ADMIN_JWT_TOKEN"
 ```
 
+### Create Trip
+```bash
+curl -X POST http://localhost:3000/api/trips \
+  -H "Authorization: Bearer JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pick_up_date": "2026-04-28",
+    "pick_up_time": "09:30:00",
+    "start_km": 1500.50,
+    "end_km": 1650.75,
+    "drop_location": "Airport Terminal 3",
+    "mileage": 150.25,
+    "trip_rate": 2500.00,
+    "category": "uber"
+  }'
+```
+
+### Get All Trips
+```bash
+curl -X GET "http://localhost:3000/api/trips?limit=50&offset=0&category=uber" \
+  -H "Authorization: Bearer JWT_TOKEN"
+```
+
+### Get Trip by ID
+```bash
+curl -X GET http://localhost:3000/api/trips/660e8400-e29b-41d4-a716-446655440100 \
+  -H "Authorization: Bearer JWT_TOKEN"
+```
+
+### Get Trips by Driver
+```bash
+curl -X GET "http://localhost:3000/api/trips/driver/550e8400-e29b-41d4-a716-446655440000?limit=50&offset=0&month=1&year=2026&category=uber" \
+  -H "Authorization: Bearer JWT_TOKEN"
+```
+
+### Update Trip
+```bash
+curl -X PUT http://localhost:3000/api/trips/660e8400-e29b-41d4-a716-446655440100 \
+  -H "Authorization: Bearer JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "end_km": 1700.50,
+    "drop_location": "Airport Terminal 2",
+    "mileage": 200.00,
+    "trip_rate": 3000.00
+  }'
+```
+
+### Delete Trip
+```bash
+curl -X DELETE http://localhost:3000/api/trips/660e8400-e29b-41d4-a716-446655440100 \
+  -H "Authorization: Bearer JWT_TOKEN"
+```
+
+### Get Car Revenue Statistics
+```bash
+curl -X GET http://localhost:3000/api/trips/stats/revenue \
+  -H "Authorization: Bearer JWT_TOKEN"
+```
+
 ### Health Check
 ```bash
 curl http://localhost:3000/health
@@ -453,6 +859,12 @@ curl http://localhost:3000/api/auth/health/detailed
 | GET | `/api/auth/users/:userId` | ✅ | ❌ | Get user by ID |
 | PUT | `/api/auth/users/:userId` | ✅ | ❌ | Update user |
 | DELETE | `/api/auth/users/:userId` | ✅ | ✅ | Delete user |
+| POST | `/api/trips` | ✅ | ❌ | Create trip |
+| GET | `/api/trips` | ✅ | ❌ | Get all trips |
+| GET | `/api/trips/:tripId` | ✅ | ❌ | Get trip by ID |
+| GET | `/api/trips/driver/:driverId` | ✅ | ❌ | Get trips by driver |
+| PUT | `/api/trips/:tripId` | ✅ | ❌ | Update trip |
+| GET | `/api/trips/stats/revenue` | ✅ | ❌ | Car revenue statistics |
 
 ---
 
@@ -464,6 +876,38 @@ curl http://localhost:3000/api/auth/health/detailed
 ✅ **Health Endpoints**: Multiple health check endpoints
 ✅ **Role-based Access Control**: Permissions based on user role
 ✅ **Plain Text Passwords**: No hashing (development only)
+✅ **Trip Management**: Complete CRUD for trips with auto-filled driver details
+✅ **All Roles Can Access Trips**: All authenticated users can create, read, update, delete trips
+
+---
+
+## 🛣️ Trips Endpoint Notes
+
+### Features:
+- **Auto-filled Fields**: `driver_id`, `car_no`, `driver_name` are automatically filled from authenticated user
+- **Category Validation**: Only `amazon`, `ola`, `uber`, `other`, `it` are allowed
+- **Numeric Fields**: `start_km`, `end_km`, `mileage`, `trip_rate` are stored as decimals
+- **Filtering**: Get trips by date, category, or driver ID
+- **All Roles Access**: Any authenticated user (admin, driver, manager) can manage trips
+- **Pagination**: Built-in pagination with `limit` and `offset` query parameters
+
+### Required Fields for Trip Creation:
+- `pick_up_date` (YYYY-MM-DD)
+- `pick_up_time` (HH:MM:SS)
+- `start_km` (decimal)
+- `end_km` (decimal)
+- `drop_location` (string)
+- `mileage` (decimal) - actual distance traveled in km
+- `trip_rate` (decimal) - cost/rate for the trip
+- `category` (amazon/ola/uber/other/it)
+
+### Auto-Generated Fields:
+- `driver_id` - From JWT token
+- `driver_name` - From authenticated user
+- `car_no` - From user profile
+- `status` - Default: "completed"
+- `created_at` - Timestamp
+- `updated_at` - Timestamp
 
 ---
 
