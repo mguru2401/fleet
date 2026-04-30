@@ -233,7 +233,7 @@ const deleteExpense = async (req, res) => {
   }
 };
 
-// Get Expense Breakdown by Car
+// Get Expense Breakdown by Car (with Trip Revenue comparison)
 const getExpenseBreakdownByCar = async (req, res) => {
   try {
     const now = new Date();
@@ -248,52 +248,90 @@ const getExpenseBreakdownByCar = async (req, res) => {
     const lastDay = new Date(filterYear, filterMonth, 0).getDate();
     const endDate = `${filterYear}-${String(filterMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-    // Get expenses within the date range
-    const { data: expenses, error } = await supabase
+    // 1. Fetch expenses within the date range
+    const { data: expenses, error: expenseError } = await supabase
       .from('expenses')
       .select('*')
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching expenses breakdown:', error);
+    if (expenseError) {
+      console.error('Error fetching expenses:', expenseError);
       return res.status(400).json({
         success: false,
-        message: 'Error fetching expenses breakdown',
-        error: error.message
+        message: 'Error fetching expenses',
+        error: expenseError.message
       });
     }
 
-    // Group expenses by car_no
-    const breakdownMap = {};
-    let grandTotal = 0;
+    // 2. Fetch trips within the same date range to calculate revenue
+    const { data: trips, error: tripError } = await supabase
+      .from('trips')
+      .select('car_no, trip_rate')
+      .gte('pick_up_date', startDate)
+      .lte('pick_up_date', endDate);
 
+    if (tripError) {
+      console.error('Error fetching trips for revenue:', tripError);
+      return res.status(400).json({
+        success: false,
+        message: 'Error fetching trip revenue',
+        error: tripError.message
+      });
+    }
+
+    // Process breakdown
+    const breakdownMap = {};
+    let grandTotalExpense = 0;
+    let grandTotalRevenue = 0;
+
+    // Initialize map with all cars from expenses
     expenses.forEach(expense => {
       const carNo = expense.car_no || 'N/A';
       
       if (!breakdownMap[carNo]) {
         breakdownMap[carNo] = {
           car_no: carNo,
-          total_amount: 0,
-          entry_count: 0,
-          entries: []
+          total_expense: 0,
+          total_revenue: 0,
+          expense_entries: []
         };
       }
       
       const amount = parseFloat(expense.amount) || 0;
-      breakdownMap[carNo].entries.push(expense);
-      breakdownMap[carNo].total_amount += amount;
-      breakdownMap[carNo].entry_count += 1;
-      grandTotal += amount;
+      breakdownMap[carNo].expense_entries.push(expense);
+      breakdownMap[carNo].total_expense += amount;
+      grandTotalExpense += amount;
     });
 
-    // Convert map to array for easier consumption
-    const breakdownArray = Object.values(breakdownMap);
+    // Add revenue from trips to the map
+    trips.forEach(trip => {
+      const carNo = trip.car_no || 'N/A';
+      
+      if (!breakdownMap[carNo]) {
+        breakdownMap[carNo] = {
+          car_no: carNo,
+          total_expense: 0,
+          total_revenue: 0,
+          expense_entries: []
+        };
+      }
+      
+      const rate = parseFloat(trip.trip_rate) || 0;
+      breakdownMap[carNo].total_revenue += rate;
+      grandTotalRevenue += rate;
+    });
+
+    // Convert map to array and add net calculation
+    const breakdownArray = Object.values(breakdownMap).map(item => ({
+      ...item,
+      net_profit: item.total_revenue - item.total_expense
+    }));
 
     return res.status(200).json({
       success: true,
-      message: 'Expense breakdown retrieved successfully',
+      message: 'Expense and Revenue breakdown retrieved successfully',
       period: {
         month: filterMonth,
         year: filterYear,
@@ -301,9 +339,10 @@ const getExpenseBreakdownByCar = async (req, res) => {
         endDate
       },
       summary: {
-        total_amount: grandTotal,
-        car_count: breakdownArray.length,
-        total_entries: expenses.length
+        total_revenue: grandTotalRevenue,
+        total_expense: grandTotalExpense,
+        net_profit: grandTotalRevenue - grandTotalExpense,
+        car_count: breakdownArray.length
       },
       data: breakdownArray
     });

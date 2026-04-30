@@ -650,48 +650,22 @@ Authorization: Bearer JWT_TOKEN
     },
     "overall_summary": {
       "total_revenue": 7300.00,
+      "total_expense": 2500.00,
+      "net_profit": 4800.00,
       "total_trips": 5
     },
     "by_category": {
       "uber": {
         "total_revenue": 2500.00,
         "trip_count": 1
-      },
-      "amazon": {
-        "total_revenue": 1800.00,
-        "trip_count": 1
-      },
-      "ola": {
-        "total_revenue": 3000.00,
-        "trip_count": 2
       }
     },
     "by_car": {
       "ABC123": {
         "total_revenue": 5500.00,
+        "total_expense": 1500.00,
+        "net_profit": 4000.00,
         "trip_count": 3
-      },
-      "XYZ789": {
-        "total_revenue": 1800.00,
-        "trip_count": 2
-      }
-    },
-    "by_car_and_category": {
-      "ABC123": {
-        "uber": {
-          "total_revenue": 2500.00,
-          "trip_count": 1
-        },
-        "ola": {
-          "total_revenue": 3000.00,
-          "trip_count": 2
-        }
-      },
-      "XYZ789": {
-        "amazon": {
-          "total_revenue": 1800.00,
-          "trip_count": 2
-        }
       }
     }
   }
@@ -767,6 +741,57 @@ Content-Type: application/json
 **Headers:**
 ```
 Authorization: Bearer JWT_TOKEN
+```
+
+---
+
+### 3. Get Expense Breakdown by Car - `/api/expenses/stats/breakdown`
+**GET** `http://localhost:3000/api/expenses/stats/breakdown?month=4&year=2026`
+
+**Headers:**
+```
+Authorization: Bearer JWT_TOKEN
+```
+
+**Query Parameters (Optional):**
+- `month` - Filter by month (1-12). Defaults to current month.
+- `year` - Filter by year (YYYY). Defaults to current year.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Expense and Revenue breakdown retrieved successfully",
+  "period": {
+    "month": 4,
+    "year": 2026,
+    "startDate": "2026-04-01",
+    "endDate": "2026-04-30"
+  },
+  "summary": {
+    "total_revenue": 25000.00,
+    "total_expense": 15000.50,
+    "net_profit": 9999.50,
+    "car_count": 2
+  },
+  "data": [
+    {
+      "car_no": "ABC123",
+      "total_revenue": 10000.00,
+      "total_expense": 3000.00,
+      "net_profit": 7000.00,
+      "expense_entries": [
+        {
+          "id": "...",
+          "date": "2026-04-28",
+          "reason": "Fuel",
+          "amount": 3000.00,
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}
 ```
 
 ---

@@ -392,27 +392,40 @@ const getCarRevenueStats = async (req, res) => {
     const lastDay = new Date(filterYear, filterMonth, 0).getDate();
     const endDate = `${filterYear}-${String(filterMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-    // Get trips grouped by car_no and category with total revenue within the date range
-    const { data: trips, error } = await supabase
+    // Get trips grouped by car_no and category within the date range
+    const { data: trips, error: tripError } = await supabase
       .from('trips')
       .select('car_no, category, trip_rate, pick_up_date')
       .gte('pick_up_date', startDate)
       .lte('pick_up_date', endDate);
 
-    if (error) {
-      console.error('Error fetching trips:', error);
+    if (tripError) {
+      console.error('Error fetching trips:', tripError);
       return res.status(400).json({
         success: false,
         message: 'Error fetching revenue data',
-        error: error.message
+        error: tripError.message
       });
+    }
+
+    // Get expenses within the same date range
+    const { data: expenses, error: expenseError } = await supabase
+      .from('expenses')
+      .select('car_no, amount')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (expenseError) {
+      console.error('Error fetching expenses:', expenseError);
+      // We'll continue even if expenses fail, but log it
     }
 
     // Calculate statistics
     const stats = {
       by_car_and_category: {},
       by_car_overall: {},
-      overall_total: 0,
+      overall_total_revenue: 0,
+      overall_total_expense: 0,
       by_category_total: {}
     };
 
@@ -439,6 +452,8 @@ const getCarRevenueStats = async (req, res) => {
       if (!stats.by_car_overall[carNo]) {
         stats.by_car_overall[carNo] = {
           total_revenue: 0,
+          total_expense: 0,
+          net_profit: 0,
           trip_count: 0
         };
       }
@@ -455,8 +470,34 @@ const getCarRevenueStats = async (req, res) => {
       stats.by_category_total[category].total_revenue += rate;
       stats.by_category_total[category].trip_count += 1;
 
-      // Overall total
-      stats.overall_total += rate;
+      // Overall total revenue
+      stats.overall_total_revenue += rate;
+    });
+
+    // Process each expense
+    if (expenses) {
+      expenses.forEach(expense => {
+        const carNo = expense.car_no || 'N/A';
+        const amount = parseFloat(expense.amount) || 0;
+
+        if (!stats.by_car_overall[carNo]) {
+          stats.by_car_overall[carNo] = {
+            total_revenue: 0,
+            total_expense: 0,
+            net_profit: 0,
+            trip_count: 0
+          };
+        }
+
+        stats.by_car_overall[carNo].total_expense += amount;
+        stats.overall_total_expense += amount;
+      });
+    }
+
+    // Calculate net profit for each car
+    Object.keys(stats.by_car_overall).forEach(carNo => {
+      const carStats = stats.by_car_overall[carNo];
+      carStats.net_profit = carStats.total_revenue - carStats.total_expense;
     });
 
     // Format the response
@@ -468,7 +509,9 @@ const getCarRevenueStats = async (req, res) => {
         endDate
       },
       overall_summary: {
-        total_revenue: stats.overall_total,
+        total_revenue: stats.overall_total_revenue,
+        total_expense: stats.overall_total_expense,
+        net_profit: stats.overall_total_revenue - stats.overall_total_expense,
         total_trips: trips.length
       },
       by_category: stats.by_category_total,
