@@ -20,7 +20,7 @@ const createAdvance = async (req, res) => {
     // Get target driver's details (name and car_no)
     const { data: driver, error: driverError } = await supabase
       .from('users')
-      .select('name, car_no')
+      .select('name, car_id, cars(car_no)')
       .eq('id', driver_id)
       .single();
 
@@ -37,7 +37,7 @@ const createAdvance = async (req, res) => {
       .insert({
         driver_id: driver_id,
         driver_name: driver.name,
-        car_no: driver.car_no || 'N/A',
+        car_no: driver.cars ? driver.cars.car_no : 'N/A',
         amount: parseFloat(amount),
         date: date,
         description: description || '',

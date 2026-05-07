@@ -177,7 +177,10 @@ Content-Type: application/json
   "mobile_no": "+1234567890",
   "car_no": "ABC123",
   "location": "Mumbai",
-  "username": "john_driver"
+  "username": "john_driver",
+  "car_id": "990e8400-e29b-41d4-a716-446655440300",
+  "employee_no": "EMP001",
+  "revenue_per_day": 3000
 }
 ```
 
@@ -195,10 +198,174 @@ Content-Type: application/json
     "mobile_no": "+1234567890",
     "car_no": "ABC123",
     "location": "Mumbai",
+    "car_id": "990e8400-e29b-41d4-a716-446655440300",
+    "employee_no": "EMP001",
+    "revenue_per_day": 3000,
     "created_at": "2026-04-28T15:30:00Z"
   }
 }
 ```
+
+---
+
+### 4. Update User - `/api/auth/users/:userId`
+**PUT** `http://localhost:3000/api/auth/users/550e8400-e29b-41d4-a716-446655440001`
+
+**Request Body (Additional Fields):**
+```json
+{
+  "car_id": "...",
+  "employee_no": "EMP001_REV",
+  "revenue_per_day": 3500
+}
+```
+
+---
+
+## 🏎️ CAR MANAGEMENT ENDPOINTS
+
+### 1. Create Car - `/api/cars`
+**POST** `http://localhost:3000/api/cars`
+
+**Request Body:**
+```json
+{
+  "name": "Toyota Innova",
+  "car_no": "MH-01-AB-1234",
+  "model": "Innova Crysta",
+  "year": 2023
+}
+```
+
+### 2. Get All Cars - `/api/cars`
+**GET** `http://localhost:3000/api/cars`
+
+### 3. Update Car - `/api/cars/:id`
+**PUT** `http://localhost:3000/api/cars/CAR_ID`
+
+**Request Body (Partial Update supported):**
+```json
+{
+  "name": "Updated Name",
+  "model": "Updated Model"
+}
+```
+
+### 4. Delete Car - `/api/cars/:id`
+**DELETE** `http://localhost:3000/api/cars/CAR_ID`
+
+---
+
+## 📈 REVENUE TRACKING ENDPOINTS
+
+### 1. Record Daily Revenue - `/api/revenue`
+**POST** `http://localhost:3000/api/revenue`
+
+**Request Body:**
+```json
+{
+  "driver_id": "...",
+  "date": "2026-05-01",
+  "amount": 4000
+}
+```
+
+### 2. Get Driver Revenue History - `/api/revenue/driver/:driver_id`
+**GET** `http://localhost:3000/api/revenue/driver/550e8400...`
+
+---
+
+## 💰 SALARY MANAGEMENT ENDPOINTS
+
+### 1. Calculate Salary (Preview) - `/api/salary/calculate`
+**GET** `http://localhost:3000/api/salary/calculate?driver_id=...&month=5&year=2026&working_days=18`
+
+**Calculation Logic:**
+- Basic Pay = (25000 / 22) * working_days
+- Target Revenue = working_days * revenue_per_day
+- Incentive = 30% of (Actual Revenue - Target Revenue)
+- Final = Basic + Incentive - Unpaid Advances
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "driver_name": "John Driver",
+    "month": 5,
+    "year": 2026,
+    "working_days": 18,
+    "basic_pay": 20455,
+    "target_revenue": 54000,
+    "actual_revenue": 88000,
+    "incentive": 10200,
+    "advances_deducted": 5000,
+    "final_salary": 25655,
+    "advances_list": [...]
+  }
+}
+```
+
+---
+
+### 2. Settle Salary - `/api/salary/settle`
+**POST** `http://localhost:3000/api/salary/settle`
+
+**Request Body:**
+```json
+{
+  "driver_id": "...",
+  "month": 5,
+  "year": 2026,
+  "working_days": 18,
+  "payment_method": "UPI" 
+}
+```
+*Note: Available methods: UPI, Cash, Bank Transfer*
+
+---
+
+### 3. Salary History - `/api/salary/history`
+**GET** `http://localhost:3000/api/salary/history?driver_id=...`
+
+---
+
+## 📅 MONTHLY WORKING DAYS ENDPOINTS (Global)
+
+### 1. Record/Update Global Working Days - `/api/working-days`
+**POST** `http://localhost:3000/api/working-days`
+*Admin Only*
+
+**Request Body:**
+```json
+{
+  "month": 5,
+  "year": 2026,
+  "working_days": 18
+}
+```
+
+### 2. View Global Working Days (History) - `/api/working-days`
+**GET** `http://localhost:3000/api/working-days`
+
+**Query Parameters (Optional):**
+- `year`: Filter by year
+- `month`: Filter by month
+
+### 2. Get All Advances - `/api/advances`
+**GET** `http://localhost:3000/api/advances?driver_id=DRIVER_ID&status=unpaid`
+
+**Query Parameters (Optional):**
+- `driver_id`: Filter advances for a specific user/driver.
+- `status`: Filter by `paid` or `unpaid`.
+- `limit`: Number of results (default 50).
+- `offset`: Pagination offset.
+
+---
+
+## 🛠️ GLOBAL INTEGRATION
+- You can set the total working days for the entire fleet once per month.
+- When calculating or settling salary, if you don't provide `working_days`, the system will use this global value.
 
 **Error Response (403):**
 ```json
@@ -849,7 +1016,13 @@ Content-Type: application/json
 ---
 
 ### 2. Get All Advances - `/api/advances`
-**GET** `http://localhost:3000/api/advances`
+**GET** `http://localhost:3000/api/advances?driver_id=DRIVER_ID&status=unpaid`
+
+**Query Parameters (Optional):**
+- `driver_id`: Filter advances for a specific user/driver.
+- `status`: Filter by `paid` or `unpaid`.
+- `limit`: Number of results (default 50).
+- `offset`: Pagination offset.
 
 ---
 

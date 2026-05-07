@@ -21,27 +21,36 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // Get user's car_no
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('car_no')
-      .eq('id', userId)
-      .single();
+    const { driver_id: providedDriverId, car_id: providedCarId } = req.body;
+    const targetDriverId = providedDriverId || userId;
+    let resolvedCarNo = 'N/A';
+    let resolvedCarId = providedCarId || null;
 
-    if (userError || !user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+    if (resolvedCarId) {
+      // Resolve from provided car_id
+      const { data: car } = await supabase.from('cars').select('car_no').eq('id', resolvedCarId).single();
+      if (car) resolvedCarNo = car.car_no;
+    } else {
+      // Resolve from driver's profile
+      const { data: user } = await supabase
+        .from('users')
+        .select('car_id, cars(car_no)')
+        .eq('id', targetDriverId)
+        .single();
+      
+      if (user) {
+        resolvedCarId = user.car_id;
+        if (user.cars) resolvedCarNo = user.cars.car_no;
+      }
     }
 
     // Create expense
     const { data: expense, error } = await supabase
       .from('expenses')
       .insert({
-        driver_id: userId,
-        car_no: user.car_no || 'N/A',
-        driver_name: userName,
+        driver_id: targetDriverId,
+        car_no: resolvedCarNo,
+        driver_name: providedDriverId ? (req.body.driver_name || 'Driver') : userName,
         date: date,
         description: description || '',
         reason: reason,
@@ -160,6 +169,20 @@ const updateExpense = async (req, res) => {
     const { expenseId } = req.params;
     const updateData = req.body;
 
+    // If driver_id or car_id is updated, resolve new car_no
+    if (updateData.driver_id || updateData.car_id) {
+      let resolvedCarId = updateData.car_id;
+      if (!resolvedCarId && updateData.driver_id) {
+        const { data: user } = await supabase.from('users').select('car_id').eq('id', updateData.driver_id).single();
+        if (user) resolvedCarId = user.car_id;
+      }
+
+      if (resolvedCarId) {
+        const { data: car } = await supabase.from('cars').select('car_no').eq('id', resolvedCarId).single();
+        if (car) updateData.car_no = car.car_no;
+      }
+    }
+
     // Add updated_at timestamp
     updateData.updated_at = new Date().toISOString();
 
@@ -233,22 +256,20 @@ const deleteExpense = async (req, res) => {
   }
 };
 
-// Get Expense Breakdown by Car (with Trip Revenue comparison)
+// Get Expense Breakdown by Car (with Trip Revenue and Salary Advances)
 const getExpenseBreakdownByCar = async (req, res) => {
   try {
     const now = new Date();
     let { month, year } = req.query;
 
-    // Default to current month and year if not provided
     const filterMonth = month ? parseInt(month) : now.getMonth() + 1;
     const filterYear = year ? parseInt(year) : now.getFullYear();
 
-    // Create date range for the specified month
     const startDate = `${filterYear}-${String(filterMonth).padStart(2, '0')}-01`;
     const lastDay = new Date(filterYear, filterMonth, 0).getDate();
     const endDate = `${filterYear}-${String(filterMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-    // 1. Fetch expenses within the date range
+    // 1. Fetch expenses
     const { data: expenses, error: expenseError } = await supabase
       .from('expenses')
       .select('*')
@@ -256,103 +277,97 @@ const getExpenseBreakdownByCar = async (req, res) => {
       .lte('date', endDate)
       .order('date', { ascending: false });
 
-    if (expenseError) {
-      console.error('Error fetching expenses:', expenseError);
-      return res.status(400).json({
-        success: false,
-        message: 'Error fetching expenses',
-        error: expenseError.message
-      });
-    }
-
-    // 2. Fetch trips within the same date range to calculate revenue
+    // 2. Fetch trips for revenue
     const { data: trips, error: tripError } = await supabase
       .from('trips')
       .select('car_no, trip_rate')
       .gte('pick_up_date', startDate)
       .lte('pick_up_date', endDate);
 
-    if (tripError) {
-      console.error('Error fetching trips for revenue:', tripError);
+    // 3. Fetch advances
+    const { data: advances, error: advanceError } = await supabase
+      .from('advances')
+      .select('*')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (expenseError || tripError) {
       return res.status(400).json({
         success: false,
-        message: 'Error fetching trip revenue',
-        error: tripError.message
+        message: 'Error fetching financial data',
+        error: expenseError?.message || tripError?.message
       });
     }
 
-    // Process breakdown
     const breakdownMap = {};
     let grandTotalExpense = 0;
     let grandTotalRevenue = 0;
+    let grandTotalAdvances = 0;
 
-    // Initialize map with all cars from expenses
-    expenses.forEach(expense => {
-      const carNo = expense.car_no || 'N/A';
-      
+    const initCar = (carNo) => {
       if (!breakdownMap[carNo]) {
         breakdownMap[carNo] = {
           car_no: carNo,
           total_expense: 0,
           total_revenue: 0,
-          expense_entries: []
+          total_advances: 0,
+          expense_entries: [],
+          advance_entries: []
         };
       }
-      
-      const amount = parseFloat(expense.amount) || 0;
-      breakdownMap[carNo].expense_entries.push(expense);
+    };
+
+    expenses.forEach(e => {
+      const carNo = e.car_no || 'N/A';
+      initCar(carNo);
+      const amount = parseFloat(e.amount) || 0;
+      breakdownMap[carNo].expense_entries.push(e);
       breakdownMap[carNo].total_expense += amount;
       grandTotalExpense += amount;
     });
 
-    // Add revenue from trips to the map
-    trips.forEach(trip => {
-      const carNo = trip.car_no || 'N/A';
-      
-      if (!breakdownMap[carNo]) {
-        breakdownMap[carNo] = {
-          car_no: carNo,
-          total_expense: 0,
-          total_revenue: 0,
-          expense_entries: []
-        };
-      }
-      
-      const rate = parseFloat(trip.trip_rate) || 0;
+    trips.forEach(t => {
+      const carNo = t.car_no || 'N/A';
+      initCar(carNo);
+      const rate = parseFloat(t.trip_rate) || 0;
       breakdownMap[carNo].total_revenue += rate;
       grandTotalRevenue += rate;
     });
 
-    // Convert map to array and add net calculation
+    if (advances) {
+      advances.forEach(a => {
+        const carNo = a.car_no || 'N/A';
+        initCar(carNo);
+        const amount = parseFloat(a.amount) || 0;
+        breakdownMap[carNo].advance_entries.push(a);
+        breakdownMap[carNo].total_advances += amount;
+        grandTotalAdvances += amount;
+      });
+    }
+
     const breakdownArray = Object.values(breakdownMap).map(item => ({
       ...item,
-      net_profit: item.total_revenue - item.total_expense
+      total_out: item.total_expense + item.total_advances,
+      net_profit: item.total_revenue - (item.total_expense + item.total_advances)
     }));
 
     return res.status(200).json({
       success: true,
       message: 'Expense and Revenue breakdown retrieved successfully',
-      period: {
-        month: filterMonth,
-        year: filterYear,
-        startDate,
-        endDate
-      },
+      period: { month: filterMonth, year: filterYear, startDate, endDate },
       summary: {
         total_revenue: grandTotalRevenue,
         total_expense: grandTotalExpense,
-        net_profit: grandTotalRevenue - grandTotalExpense,
+        total_advances: grandTotalAdvances,
+        total_out: grandTotalExpense + grandTotalAdvances,
+        net_profit: grandTotalRevenue - (grandTotalExpense + grandTotalAdvances),
         car_count: breakdownArray.length
       },
       data: breakdownArray
     });
   } catch (error) {
     console.error('Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      error: error.message
-    });
+    return res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
   }
 };
 

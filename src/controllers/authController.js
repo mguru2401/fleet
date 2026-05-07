@@ -100,9 +100,14 @@ const getProfile = async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, name, role, mobile_no, car_no, location, created_at, username')
+      .select('id, email, name, role, mobile_no, location, created_at, username, car_id, employee_no, revenue_per_day, cars(car_no)')
       .eq('id', userId)
       .single();
+
+    if (user && user.cars) {
+      user.car_no = user.cars.car_no;
+      delete user.cars;
+    }
 
     if (error || !user) {
       return res.status(404).json({
@@ -164,7 +169,7 @@ const logout = async (req, res) => {
 // Create User - ADMIN ONLY
 const createUser = async (req, res) => {
   try {
-    const { email, password, name, role, mobile_no, car_no, location, username } = req.body;
+    const { email, password, name, role, mobile_no, location, username, car_id, employee_no, revenue_per_day } = req.body;
 
     // Validate required fields
     if (!email || !password) {
@@ -218,11 +223,13 @@ const createUser = async (req, res) => {
           name: name || email.split('@')[0],
           role: role || 'user',
           mobile_no: mobile_no || null,
-          car_no: car_no || null,
-          location: location || null
+          location: location || null,
+          car_id: car_id || null,
+          employee_no: employee_no || null,
+          revenue_per_day: revenue_per_day || 0
         }
       ])
-      .select('id, email, username, name, role, mobile_no, car_no, location, created_at');
+      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, created_at');
 
     if (error) {
       return res.status(500).json({
@@ -252,7 +259,16 @@ const getAllUsers = async (req, res) => {
   try {
     const { data: users, error } = await supabase
       .from('users')
-      .select('id, email, username, name, role, mobile_no, car_no, location, last_login, created_at');
+      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, last_login, created_at, cars(car_no)');
+
+    if (users) {
+      users.forEach(u => {
+        if (u.cars) {
+          u.car_no = u.cars.car_no;
+          delete u.cars;
+        }
+      });
+    }
 
     if (error) {
       return res.status(500).json({
@@ -295,9 +311,14 @@ const getUserById = async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, username, name, role, mobile_no, car_no, location, last_login, created_at')
+      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, last_login, created_at, cars(car_no)')
       .eq('id', userId)
       .single();
+
+    if (user && user.cars) {
+      user.car_no = user.cars.car_no;
+      delete user.cars;
+    }
 
     if (error || !user) {
       return res.status(404).json({
@@ -327,7 +348,7 @@ const updateUser = async (req, res) => {
     const { userId } = req.params;
     const requesterId = req.user.id;
     const requesterRole = req.user.role;
-    const { name, mobile_no, car_no, location, role, password } = req.body;
+    const { name, mobile_no, location, role, password, car_id, employee_no, revenue_per_day } = req.body;
 
     // Only admin or the user themselves can update profile
     if (requesterRole !== 'admin' && requesterId !== userId) {
@@ -341,8 +362,10 @@ const updateUser = async (req, res) => {
     const updateData = {};
     if (name) updateData.name = name;
     if (mobile_no) updateData.mobile_no = mobile_no;
-    if (car_no) updateData.car_no = car_no;
     if (location) updateData.location = location;
+    if (car_id) updateData.car_id = car_id;
+    if (employee_no) updateData.employee_no = employee_no;
+    if (revenue_per_day !== undefined) updateData.revenue_per_day = revenue_per_day;
     if (requesterRole === 'admin' && role) updateData.role = role; // Only admin can change role
     if (password) updateData.password_hash = hashPassword(password);
     updateData.updated_at = new Date().toISOString();
@@ -351,7 +374,7 @@ const updateUser = async (req, res) => {
       .from('users')
       .update(updateData)
       .eq('id', userId)
-      .select('id, email, username, name, role, mobile_no, car_no, location, created_at, updated_at');
+      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, created_at, updated_at');
 
     if (error) {
       return res.status(500).json({

@@ -5,6 +5,10 @@ const authRoutes = require('./routes/authRoutes');
 const tripRoutes = require('./routes/tripRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const advanceRoutes = require('./routes/advanceRoutes');
+const carRoutes = require('./routes/carRoutes');
+const revenueRoutes = require('./routes/revenueRoutes');
+const salaryRoutes = require('./routes/salaryRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,6 +47,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/trips', tripRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/advances', advanceRoutes);
+app.use('/api/cars', carRoutes);
+app.use('/api/revenue', revenueRoutes);
+app.use('/api/salary', salaryRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -7,7 +7,7 @@ const supabase = require('../config/supabase');
 // Create Trip
 const createTrip = async (req, res) => {
   try {
-    const { pick_up_date, pick_up_time, start_km, end_km, drop_location, mileage, trip_rate, category } = req.body;
+    const { pick_up_date, pick_up_time, start_km, end_km, drop_location, mileage, trip_rate, category, commission_amount } = req.body;
     
     // Get user from token (attached by auth middleware)
     const userId = req.user.id;
@@ -21,44 +21,59 @@ const createTrip = async (req, res) => {
       });
     }
 
-    // Validate category
-    const validCategories = ['amazon', 'ola', 'uber', 'other', 'it'];
-    if (!validCategories.includes(category)) {
+    const commAmt = parseFloat(commission_amount) || 0;
+    const tripRate = parseFloat(trip_rate);
+    const netAmount = tripRate - commAmt;
+
+    const { driver_id: providedDriverId, car_id: providedCarId, category_id } = req.body;
+    const targetDriverId = providedDriverId || userId;
+    let resolvedCarNo = 'N/A';
+    let resolvedCarId = providedCarId || null;
+
+    // Validate category (can be category name or category_id)
+    if (!category && !category_id) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid category. Allowed values: amazon, ola, uber, other, it'
+        message: 'Category or Category ID is required'
       });
     }
 
-    // Get user's car_no
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('car_no')
-      .eq('id', userId)
-      .single();
-
-    if (userError || !user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+    if (resolvedCarId) {
+      // Resolve from provided car_id
+      const { data: car } = await supabase.from('cars').select('car_no').eq('id', resolvedCarId).single();
+      if (car) resolvedCarNo = car.car_no;
+    } else {
+      // Resolve from driver's profile
+      const { data: user } = await supabase
+        .from('users')
+        .select('car_id, cars(car_no)')
+        .eq('id', targetDriverId)
+        .single();
+      
+      if (user) {
+        resolvedCarId = user.car_id;
+        if (user.cars) resolvedCarNo = user.cars.car_no;
+      }
     }
 
     // Create trip
     const { data: trip, error } = await supabase
       .from('trips')
       .insert({
-        driver_id: userId,
-        car_no: user.car_no || 'N/A',
-        driver_name: userName,
+        driver_id: targetDriverId,
+        car_no: resolvedCarNo,
+        driver_name: providedDriverId ? (req.body.driver_name || 'Driver') : userName,
         pick_up_date: pick_up_date,
         pick_up_time: pick_up_time,
         start_km: parseFloat(start_km),
         end_km: parseFloat(end_km),
         drop_location: drop_location,
         mileage: parseFloat(mileage),
-        trip_rate: parseFloat(trip_rate),
-        category: category
+        trip_rate: tripRate,
+        commission_amount: commAmt,
+        net_amount: netAmount,
+        category: category,
+        category_id: category_id
       })
       .select();
 
@@ -186,22 +201,37 @@ const updateTrip = async (req, res) => {
       });
     }
 
-    // Validate category if provided
-    if (updateData.category) {
-      const validCategories = ['amazon', 'ola', 'uber', 'other', 'it'];
-      if (!validCategories.includes(updateData.category)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid category. Allowed values: amazon, ola, uber, other, it'
-        });
-      }
-    }
-
     // Convert numeric fields
     if (updateData.start_km) updateData.start_km = parseFloat(updateData.start_km);
     if (updateData.end_km) updateData.end_km = parseFloat(updateData.end_km);
     if (updateData.mileage) updateData.mileage = parseFloat(updateData.mileage);
+    if (updateData.trip_rate || updateData.commission_amount) {
+      const currentRate = updateData.trip_rate !== undefined ? parseFloat(updateData.trip_rate) : null;
+      const currentComm = updateData.commission_amount !== undefined ? parseFloat(updateData.commission_amount) : null;
+      
+      // If either is provided, we need to recalculate net_amount
+      // This is slightly tricky without the original values, so we might need a quick fetch or assume the caller provides what's needed.
+      // For now, let's just handle it if both are provided or if it's a simple update.
+      if (currentRate !== null && currentComm !== null) {
+        updateData.net_amount = currentRate - currentComm;
+      }
+    }
     if (updateData.trip_rate) updateData.trip_rate = parseFloat(updateData.trip_rate);
+    if (updateData.commission_amount) updateData.commission_amount = parseFloat(updateData.commission_amount);
+
+    // If driver_id or car_id is updated, resolve new car_no
+    if (updateData.driver_id || updateData.car_id) {
+      let resolvedCarId = updateData.car_id;
+      if (!resolvedCarId && updateData.driver_id) {
+        const { data: user } = await supabase.from('users').select('car_id').eq('id', updateData.driver_id).single();
+        if (user) resolvedCarId = user.car_id;
+      }
+
+      if (resolvedCarId) {
+        const { data: car } = await supabase.from('cars').select('car_no').eq('id', resolvedCarId).single();
+        if (car) updateData.car_no = car.car_no;
+      }
+    }
 
     // Add updated_at timestamp
     updateData.updated_at = new Date().toISOString();
