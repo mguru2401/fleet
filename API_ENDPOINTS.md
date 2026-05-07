@@ -91,6 +91,7 @@ Content-Type: application/json
     "mobile_no": "9876543210",
     "car_no": null,
     "location": "India",
+    "desired_salary": 50000,
     "session_id": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
     "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
   }
@@ -130,6 +131,7 @@ Content-Type: application/json
     "mobile_no": "9876543210",
     "car_no": null,
     "location": "India",
+    "desired_salary": 50000,
     "created_at": "2026-04-28T10:00:00Z"
   }
 }
@@ -180,7 +182,8 @@ Content-Type: application/json
   "username": "john_driver",
   "car_id": "990e8400-e29b-41d4-a716-446655440300",
   "employee_no": "EMP001",
-  "revenue_per_day": 3000
+  "revenue_per_day": 3000,
+  "desired_salary": 50000
 }
 ```
 
@@ -201,6 +204,7 @@ Content-Type: application/json
     "car_id": "990e8400-e29b-41d4-a716-446655440300",
     "employee_no": "EMP001",
     "revenue_per_day": 3000,
+    "desired_salary": 50000,
     "created_at": "2026-04-28T15:30:00Z"
   }
 }
@@ -216,7 +220,8 @@ Content-Type: application/json
 {
   "car_id": "...",
   "employee_no": "EMP001_REV",
-  "revenue_per_day": 3500
+  "revenue_per_day": 3500,
+  "desired_salary": 55000
 }
 ```
 
@@ -278,13 +283,12 @@ Content-Type: application/json
 ## 💰 SALARY MANAGEMENT ENDPOINTS
 
 ### 1. Calculate Salary (Preview) - `/api/salary/calculate`
-**GET** `http://localhost:3000/api/salary/calculate?driver_id=...&month=5&year=2026&working_days=18`
+**GET** `http://localhost:3000/api/salary/calculate?driver_id=...&month=5&year=2026`
 
 **Calculation Logic:**
-- Basic Pay = (25000 / 22) * working_days
-- Target Revenue = working_days * revenue_per_day
-- Incentive = 30% of (Actual Revenue - Target Revenue)
-- Final = Basic + Incentive - Unpaid Advances
+- **Standard Days**: Base Salary (₹1136.36) + 30% Incentive on revenue exceeding daily target.
+- **Ola/Uber Only Days**: 30% share of total daily revenue (no base salary).
+- **Final Settlement**: Total Calculated Salary - Unpaid Advances.
 
 **Response (200):**
 ```json
@@ -294,13 +298,24 @@ Content-Type: application/json
     "driver_name": "John Driver",
     "month": 5,
     "year": 2026,
-    "working_days": 18,
-    "basic_pay": 20455,
-    "target_revenue": 54000,
-    "actual_revenue": 88000,
-    "incentive": 10200,
+    "desired_salary": 50000,
+    "total_working_days": 18,
+    "total_revenue": 88000,
+    "calculated_salary": 25655,
     "advances_deducted": 5000,
-    "final_salary": 25655,
+    "final_payable": 20655,
+    "breakdown": [
+      {
+        "date": "2026-05-01",
+        "target_revenue": 3000,
+        "actual_revenue": 4500,
+        "base_salary": 1136.36,
+        "eligible_for_30_percent": 1500,
+        "per_day_salary_attained": 1586.36,
+        "categories": ["uber", "amazon"],
+        "type": "Standard (Base + 30% Incentive)"
+      }
+    ],
     "advances_list": [...]
   }
 }
@@ -311,13 +326,18 @@ Content-Type: application/json
 ### 2. Settle Salary - `/api/salary/settle`
 **POST** `http://localhost:3000/api/salary/settle`
 
+**Headers:**
+```
+Authorization: Bearer ADMIN_JWT_TOKEN
+Content-Type: application/json
+```
+
 **Request Body:**
 ```json
 {
-  "driver_id": "...",
+  "driver_id": "DRIVER_UUID",
   "month": 5,
   "year": 2026,
-  "working_days": 18,
   "payment_method": "UPI" 
 }
 ```
@@ -325,10 +345,68 @@ Content-Type: application/json
 
 ---
 
-### 3. Salary History - `/api/salary/history`
-**GET** `http://localhost:3000/api/salary/history?driver_id=...`
+### 3. Salary History (Admin) - `/api/salary/history`
+**GET** `http://localhost:3000/api/salary/history?driver_id=...&month=5&year=2026`
 
 ---
+
+### 4. My Salary History (Driver) - `/api/salary/my-history`
+**GET** `http://localhost:3000/api/salary/my-history?month=5&year=2026`
+
+---
+
+### 5. Set Desired Salary (Driver) - `/api/salary/set-desired-salary`
+**POST** `http://localhost:3000/api/salary/set-desired-salary`
+
+**Request Body:**
+```json
+{
+  "desired_salary": 60000
+}
+```
+
+---
+
+### 6. Goal Progress Status (Driver) - `/api/salary/goal-status`
+**GET** `http://localhost:3000/api/salary/goal-status?month=5&year=2026`
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "month": 5,
+    "year": 2026,
+    "desired_salary": 60000,
+    "so_far_salary": 25000,
+    "remaining_to_goal": 35000,
+    "achievement_percentage": 42
+  }
+}
+```
+
+---
+
+### 7. Daily Earnings History (Driver) - `/api/salary/daily-earnings`
+**GET** `http://localhost:3000/api/salary/daily-earnings?start_date=2026-05-01&end_date=2026-05-07`
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "date": "2026-05-01",
+      "total_net_revenue": 4500,
+      "trip_count": 3,
+      "trips": [...]
+    }
+  ]
+}
+```
+
+---
+
 
 ## 📅 MONTHLY WORKING DAYS ENDPOINTS (Global)
 
@@ -401,6 +479,7 @@ Authorization: Bearer ADMIN_JWT_TOKEN
       "mobile_no": "9876543210",
       "car_no": null,
       "location": "India",
+      "desired_salary": 0,
       "last_login": "2026-04-28T15:25:00Z",
       "created_at": "2026-04-28T10:00:00Z"
     },
@@ -413,6 +492,7 @@ Authorization: Bearer ADMIN_JWT_TOKEN
       "mobile_no": "+1234567890",
       "car_no": "ABC123",
       "location": "Mumbai",
+      "desired_salary": 50000,
       "last_login": null,
       "created_at": "2026-04-28T15:30:00Z"
     }
@@ -444,6 +524,7 @@ Authorization: Bearer JWT_TOKEN
     "mobile_no": "9876543210",
     "car_no": null,
     "location": "India",
+    "desired_salary": 0,
     "last_login": "2026-04-28T15:25:00Z",
     "created_at": "2026-04-28T10:00:00Z"
   }
@@ -495,6 +576,7 @@ Content-Type: application/json
     "mobile_no": "+9876543210",
     "car_no": "XYZ789",
     "location": "Pune",
+    "desired_salary": 55000,
     "created_at": "2026-04-28T15:30:00Z",
     "updated_at": "2026-04-28T15:45:00Z"
   }

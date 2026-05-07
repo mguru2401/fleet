@@ -7,7 +7,9 @@ const supabase = require('../config/supabase');
 // Create Trip
 const createTrip = async (req, res) => {
   try {
-    const { pick_up_date, pick_up_time, start_km, end_km, drop_location, mileage, trip_rate, category, commission_amount } = req.body;
+    const { pick_up_date, pick_up_time, start_km, end_km, drop_location, mileage, trip_rate, category } = req.body;
+    // Allow both commission and commission_amount
+    const commission_amount = req.body.commission_amount !== undefined ? req.body.commission_amount : req.body.commission;
     
     // Get user from token (attached by auth middleware)
     const userId = req.user.id;
@@ -201,17 +203,23 @@ const updateTrip = async (req, res) => {
       });
     }
 
+    // Handle commission alias
+    if (updateData.commission !== undefined && updateData.commission_amount === undefined) {
+      updateData.commission_amount = updateData.commission;
+    }
+
     // Convert numeric fields
     if (updateData.start_km) updateData.start_km = parseFloat(updateData.start_km);
     if (updateData.end_km) updateData.end_km = parseFloat(updateData.end_km);
     if (updateData.mileage) updateData.mileage = parseFloat(updateData.mileage);
-    if (updateData.trip_rate || updateData.commission_amount) {
+    
+    if (updateData.trip_rate !== undefined || updateData.commission_amount !== undefined) {
       const currentRate = updateData.trip_rate !== undefined ? parseFloat(updateData.trip_rate) : null;
       const currentComm = updateData.commission_amount !== undefined ? parseFloat(updateData.commission_amount) : null;
       
-      // If either is provided, we need to recalculate net_amount
-      // This is slightly tricky without the original values, so we might need a quick fetch or assume the caller provides what's needed.
-      // For now, let's just handle it if both are provided or if it's a simple update.
+      // If either is provided, we might need the other to recalculate net_amount correctly.
+      // For a robust update, we should ideally fetch the current record if only one is provided,
+      // but if both are provided, we can calculate it directly.
       if (currentRate !== null && currentComm !== null) {
         updateData.net_amount = currentRate - currentComm;
       }
@@ -219,7 +227,7 @@ const updateTrip = async (req, res) => {
     if (updateData.trip_rate) updateData.trip_rate = parseFloat(updateData.trip_rate);
     if (updateData.commission_amount) updateData.commission_amount = parseFloat(updateData.commission_amount);
 
-    // If driver_id or car_id is updated, resolve new car_no
+    // Resolve car_no if driver_id or car_id is updated
     if (updateData.driver_id || updateData.car_id) {
       let resolvedCarId = updateData.car_id;
       if (!resolvedCarId && updateData.driver_id) {
@@ -232,6 +240,10 @@ const updateTrip = async (req, res) => {
         if (car) updateData.car_no = car.car_no;
       }
     }
+
+    // Remove fields that are not in the database table
+    delete updateData.car_id;
+    delete updateData.commission;
 
     // Add updated_at timestamp
     updateData.updated_at = new Date().toISOString();

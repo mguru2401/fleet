@@ -60,14 +60,25 @@ const calculateSalary = async (req, res) => {
       if (!dailyEarnings[date]) {
         dailyEarnings[date] = {
           total_revenue: 0,
+          ola_uber_revenue: 0,
+          other_revenue: 0,
           categories: new Set()
         };
       }
       // Use net_amount if available, otherwise trip_rate
       const amount = trip.net_amount !== undefined && trip.net_amount !== null ? parseFloat(trip.net_amount) : parseFloat(trip.trip_rate);
-      dailyEarnings[date].total_revenue += amount || 0;
+      const val = amount || 0;
+      dailyEarnings[date].total_revenue += val;
+
+      const category = trip.category ? trip.category.toLowerCase() : '';
+      if (category === 'ola' || category === 'uber') {
+        dailyEarnings[date].ola_uber_revenue += val;
+      } else {
+        dailyEarnings[date].other_revenue += val;
+      }
+
       if (trip.category) {
-        dailyEarnings[date].categories.add(trip.category.toLowerCase());
+        dailyEarnings[date].categories.add(category);
       }
     });
 
@@ -78,21 +89,27 @@ const calculateSalary = async (req, res) => {
     Object.keys(dailyEarnings).sort().forEach(date => {
       const dayData = dailyEarnings[date];
       const cats = Array.from(dayData.categories);
-      const onlyOlaUber = cats.length > 0 && cats.every(c => c === 'ola' || c === 'uber');
       
       let daySalary = 0;
       let type = '';
       let eligibleForIncentive = 0;
 
-      if (onlyOlaUber) {
-        // Rule: only Ola or Uber (or both) -> 30% of day's earnings
-        daySalary = dayData.total_revenue * OLA_UBER_PERCENTAGE;
-        type = 'Ola/Uber Only (30%)';
-      } else {
-        // Rule: Base 1136.36 + 30% of excess over revenue_per_day
-        eligibleForIncentive = Math.max(0, dayData.total_revenue - revenuePerDay);
+      if (dayData.other_revenue > 0) {
+        // Standard rule for non-Ola/Uber trips: Base + 30% of excess over revenue_per_day
+        eligibleForIncentive = Math.max(0, dayData.other_revenue - revenuePerDay);
         daySalary = BASE_SALARY_PER_DAY + (eligibleForIncentive * INCENTIVE_PERCENTAGE);
-        type = 'Standard (Base + 30% Incentive)';
+        
+        // Add 30% of any Ola/Uber revenue on the same day
+        if (dayData.ola_uber_revenue > 0) {
+          daySalary += (dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE);
+          type = 'Mixed (Base + 30% Incentive + 30% Ola/Uber)';
+        } else {
+          type = 'Standard (Base + 30% Incentive)';
+        }
+      } else {
+        // Only Ola/Uber trips: 30% of earnings
+        daySalary = dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE;
+        type = 'Ola/Uber Only (30%)';
       }
 
       totalMonthlySalary += daySalary;
@@ -102,7 +119,9 @@ const calculateSalary = async (req, res) => {
         date,
         target_revenue: revenuePerDay,
         actual_revenue: Math.round(dayData.total_revenue * 100) / 100,
-        base_salary: BASE_SALARY_PER_DAY,
+        other_revenue: Math.round(dayData.other_revenue * 100) / 100,
+        ola_uber_revenue: Math.round(dayData.ola_uber_revenue * 100) / 100,
+        base_salary: dayData.other_revenue > 0 ? BASE_SALARY_PER_DAY : 0,
         eligible_for_30_percent: Math.round(eligibleForIncentive * 100) / 100,
         per_day_salary_attained: Math.round(daySalary * 100) / 100,
         categories: cats,
@@ -194,25 +213,35 @@ const settleSalary = async (req, res) => {
     (trips || []).forEach(trip => {
       const date = trip.pick_up_date;
       if (!dailyEarnings[date]) {
-        dailyEarnings[date] = { total_revenue: 0, categories: new Set() };
+        dailyEarnings[date] = { total_revenue: 0, ola_uber_revenue: 0, other_revenue: 0, categories: new Set() };
       }
       const amount = trip.net_amount !== undefined && trip.net_amount !== null ? parseFloat(trip.net_amount) : parseFloat(trip.trip_rate);
-      dailyEarnings[date].total_revenue += amount || 0;
-      if (trip.category) dailyEarnings[date].categories.add(trip.category.toLowerCase());
+      const val = amount || 0;
+      dailyEarnings[date].total_revenue += val;
+
+      const category = trip.category ? trip.category.toLowerCase() : '';
+      if (category === 'ola' || category === 'uber') {
+        dailyEarnings[date].ola_uber_revenue += val;
+      } else {
+        dailyEarnings[date].other_revenue += val;
+      }
+      if (trip.category) dailyEarnings[date].categories.add(category);
     });
 
     let totalMonthlySalary = 0;
     let totalActualRevenue = 0;
     Object.values(dailyEarnings).forEach(dayData => {
-      const cats = Array.from(dayData.categories);
-      const onlyOlaUber = cats.length > 0 && cats.every(c => c === 'ola' || c === 'uber');
-      
-      if (onlyOlaUber) {
-        totalMonthlySalary += (dayData.total_revenue * OLA_UBER_PERCENTAGE);
+      let daySalary = 0;
+      if (dayData.other_revenue > 0) {
+        const excess = Math.max(0, dayData.other_revenue - revenuePerDay);
+        daySalary = BASE_SALARY_PER_DAY + (excess * INCENTIVE_PERCENTAGE);
+        if (dayData.ola_uber_revenue > 0) {
+          daySalary += (dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE);
+        }
       } else {
-        const excess = Math.max(0, dayData.total_revenue - revenuePerDay);
-        totalMonthlySalary += (BASE_SALARY_PER_DAY + (excess * INCENTIVE_PERCENTAGE));
+        daySalary = dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE;
       }
+      totalMonthlySalary += daySalary;
       totalActualRevenue += dayData.total_revenue;
     });
 
@@ -319,22 +348,31 @@ const getSalaryVsDesired = async (req, res) => {
     (trips || []).forEach(trip => {
       const date = trip.pick_up_date;
       if (!dailyEarnings[date]) {
-        dailyEarnings[date] = { total_revenue: 0, categories: new Set() };
+        dailyEarnings[date] = { total_revenue: 0, ola_uber_revenue: 0, other_revenue: 0, categories: new Set() };
       }
       const amount = trip.net_amount !== undefined && trip.net_amount !== null ? parseFloat(trip.net_amount) : parseFloat(trip.trip_rate);
-      dailyEarnings[date].total_revenue += amount || 0;
-      if (trip.category) dailyEarnings[date].categories.add(trip.category.toLowerCase());
+      const val = amount || 0;
+      dailyEarnings[date].total_revenue += val;
+
+      const category = trip.category ? trip.category.toLowerCase() : '';
+      if (category === 'ola' || category === 'uber') {
+        dailyEarnings[date].ola_uber_revenue += val;
+      } else {
+        dailyEarnings[date].other_revenue += val;
+      }
+      if (trip.category) dailyEarnings[date].categories.add(category);
     });
 
     let soFarSalary = 0;
     Object.values(dailyEarnings).forEach(dayData => {
-      const cats = Array.from(dayData.categories);
-      const onlyOlaUber = cats.length > 0 && cats.every(c => c === 'ola' || c === 'uber');
-      if (onlyOlaUber) {
-        soFarSalary += (dayData.total_revenue * OLA_UBER_PERCENTAGE);
-      } else {
-        const excess = Math.max(0, dayData.total_revenue - revenuePerDay);
+      if (dayData.other_revenue > 0) {
+        const excess = Math.max(0, dayData.other_revenue - revenuePerDay);
         soFarSalary += (BASE_SALARY_PER_DAY + (excess * INCENTIVE_PERCENTAGE));
+        if (dayData.ola_uber_revenue > 0) {
+          soFarSalary += (dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE);
+        }
+      } else {
+        soFarSalary += (dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE);
       }
     });
 

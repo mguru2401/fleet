@@ -23,7 +23,7 @@ const login = async (req, res) => {
     // Query user from Supabase by EMAIL
     const { data: user, error } = await supabase
       .from('users')
-      .select('*')
+      .select('*, cars(car_no)')
       .eq('email', email)
       .single();
 
@@ -67,6 +67,10 @@ const login = async (req, res) => {
       console.error('Error updating session:', updateError);
     }
 
+    if (user && user.cars) {
+      user.car_no = user.cars.car_no;
+    }
+
     // Return success response
     res.status(200).json({
       success: true,
@@ -79,6 +83,7 @@ const login = async (req, res) => {
         mobile_no: user.mobile_no,
         car_no: user.car_no,
         location: user.location,
+        desired_salary: user.desired_salary || 0,
         session_id: sessionId,
         jwt_token: token
       }
@@ -100,7 +105,7 @@ const getProfile = async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, name, role, mobile_no, location, created_at, username, car_id, employee_no, revenue_per_day, cars(car_no)')
+      .select('id, email, name, role, mobile_no, location, created_at, username, car_id, employee_no, revenue_per_day, desired_salary, cars(car_no)')
       .eq('id', userId)
       .single();
 
@@ -169,7 +174,7 @@ const logout = async (req, res) => {
 // Create User - ADMIN ONLY
 const createUser = async (req, res) => {
   try {
-    const { email, password, name, role, mobile_no, location, username, car_id, employee_no, revenue_per_day } = req.body;
+    const { email, password, name, role, mobile_no, location, username, car_id, employee_no, revenue_per_day, desired_salary } = req.body;
 
     // Validate required fields
     if (!email || !password) {
@@ -212,6 +217,13 @@ const createUser = async (req, res) => {
     // Hash password
     const passwordHash = hashPassword(password);
 
+    // Resolve car_no if car_id is provided
+    let resolvedCarNo = null;
+    if (car_id) {
+      const { data: car } = await supabase.from('cars').select('car_no').eq('id', car_id).single();
+      if (car) resolvedCarNo = car.car_no;
+    }
+
     // Create new user
     const { data: newUser, error } = await supabase
       .from('users')
@@ -225,11 +237,18 @@ const createUser = async (req, res) => {
           mobile_no: mobile_no || null,
           location: location || null,
           car_id: car_id || null,
+          car_no: resolvedCarNo,
           employee_no: employee_no || null,
-          revenue_per_day: revenue_per_day || 0
+          revenue_per_day: revenue_per_day || 0,
+          desired_salary: desired_salary || 0
         }
       ])
-      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, created_at');
+      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, desired_salary, created_at, cars(car_no)');
+
+    if (newUser && newUser[0] && newUser[0].cars) {
+      newUser[0].car_no = newUser[0].cars.car_no;
+      delete newUser[0].cars;
+    }
 
     if (error) {
       return res.status(500).json({
@@ -259,7 +278,7 @@ const getAllUsers = async (req, res) => {
   try {
     const { data: users, error } = await supabase
       .from('users')
-      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, last_login, created_at, cars(car_no)');
+      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, desired_salary, last_login, created_at, cars(car_no)');
 
     if (users) {
       users.forEach(u => {
@@ -311,7 +330,7 @@ const getUserById = async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, last_login, created_at, cars(car_no)')
+      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, desired_salary, last_login, created_at, cars(car_no)')
       .eq('id', userId)
       .single();
 
@@ -348,7 +367,7 @@ const updateUser = async (req, res) => {
     const { userId } = req.params;
     const requesterId = req.user.id;
     const requesterRole = req.user.role;
-    const { name, mobile_no, location, role, password, car_id, employee_no, revenue_per_day } = req.body;
+    const { name, mobile_no, location, role, password, car_id, employee_no, revenue_per_day, desired_salary } = req.body;
 
     // Only admin or the user themselves can update profile
     if (requesterRole !== 'admin' && requesterId !== userId) {
@@ -363,9 +382,15 @@ const updateUser = async (req, res) => {
     if (name) updateData.name = name;
     if (mobile_no) updateData.mobile_no = mobile_no;
     if (location) updateData.location = location;
-    if (car_id) updateData.car_id = car_id;
+    if (car_id) {
+      updateData.car_id = car_id;
+      // Resolve car_no for the users table column
+      const { data: car } = await supabase.from('cars').select('car_no').eq('id', car_id).single();
+      if (car) updateData.car_no = car.car_no;
+    }
     if (employee_no) updateData.employee_no = employee_no;
     if (revenue_per_day !== undefined) updateData.revenue_per_day = revenue_per_day;
+    if (desired_salary !== undefined) updateData.desired_salary = desired_salary;
     if (requesterRole === 'admin' && role) updateData.role = role; // Only admin can change role
     if (password) updateData.password_hash = hashPassword(password);
     updateData.updated_at = new Date().toISOString();
@@ -374,7 +399,12 @@ const updateUser = async (req, res) => {
       .from('users')
       .update(updateData)
       .eq('id', userId)
-      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, created_at, updated_at');
+      .select('id, email, username, name, role, mobile_no, location, car_id, employee_no, revenue_per_day, desired_salary, created_at, updated_at, cars(car_no)');
+
+    if (updatedUser && updatedUser[0] && updatedUser[0].cars) {
+      updatedUser[0].car_no = updatedUser[0].cars.car_no;
+      delete updatedUser[0].cars;
+    }
 
     if (error) {
       return res.status(500).json({
