@@ -372,10 +372,11 @@ CREATE TABLE IF NOT EXISTS categories (
 INSERT INTO categories (name) VALUES ('ola'), ('uber'), ('amazon'), ('it'), ('other');
 ```
 
-### Update Trips Table (Add commission and net amount)
+### Update Trips Table (Add commission, net amount, and category_id)
 ```sql
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS commission_amount DECIMAL(10, 2) DEFAULT 0.00;
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS net_amount DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id);
 
 -- Backfill net_amount for existing trips
 UPDATE trips SET net_amount = trip_rate - COALESCE(commission_amount, 0) WHERE net_amount = 0;
