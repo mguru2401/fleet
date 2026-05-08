@@ -94,9 +94,9 @@ const calculateSalary = async (req, res) => {
       let type = '';
       let eligibleForIncentive = 0;
 
-      if (dayData.other_revenue > 0) {
-        // Standard rule for non-Ola/Uber trips: Base + 30% of excess over revenue_per_day
-        eligibleForIncentive = Math.max(0, dayData.other_revenue - revenuePerDay);
+      if (dayData.other_revenue >= revenuePerDay) {
+        // Standard rule: Base + 30% of excess over revenue_per_day
+        eligibleForIncentive = dayData.other_revenue - revenuePerDay;
         daySalary = BASE_SALARY_PER_DAY + (eligibleForIncentive * INCENTIVE_PERCENTAGE);
         
         // Add 30% of any Ola/Uber revenue on the same day
@@ -107,9 +107,9 @@ const calculateSalary = async (req, res) => {
           type = 'Standard (Base + 30% Incentive)';
         }
       } else {
-        // Only Ola/Uber trips: 30% of earnings
+        // Target not met or only Ola/Uber
         daySalary = dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE;
-        type = 'Ola/Uber Only (30%)';
+        type = dayData.other_revenue > 0 ? 'Target Not Met (0 Salary)' : 'Ola/Uber Only (30%)';
       }
 
       totalMonthlySalary += daySalary;
@@ -232,8 +232,8 @@ const settleSalary = async (req, res) => {
     let totalActualRevenue = 0;
     Object.values(dailyEarnings).forEach(dayData => {
       let daySalary = 0;
-      if (dayData.other_revenue > 0) {
-        const excess = Math.max(0, dayData.other_revenue - revenuePerDay);
+      if (dayData.other_revenue >= revenuePerDay) {
+        const excess = dayData.other_revenue - revenuePerDay;
         daySalary = BASE_SALARY_PER_DAY + (excess * INCENTIVE_PERCENTAGE);
         if (dayData.ola_uber_revenue > 0) {
           daySalary += (dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE);
@@ -365,8 +365,8 @@ const getSalaryVsDesired = async (req, res) => {
 
     let soFarSalary = 0;
     Object.values(dailyEarnings).forEach(dayData => {
-      if (dayData.other_revenue > 0) {
-        const excess = Math.max(0, dayData.other_revenue - revenuePerDay);
+      if (dayData.other_revenue >= revenuePerDay) {
+        const excess = dayData.other_revenue - revenuePerDay;
         soFarSalary += (BASE_SALARY_PER_DAY + (excess * INCENTIVE_PERCENTAGE));
         if (dayData.ola_uber_revenue > 0) {
           soFarSalary += (dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE);

@@ -9,6 +9,7 @@ const carRoutes = require('./routes/carRoutes');
 const revenueRoutes = require('./routes/revenueRoutes');
 const salaryRoutes = require('./routes/salaryRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,6 +52,7 @@ app.use('/api/cars', carRoutes);
 app.use('/api/revenue', revenueRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // 404 handler
 app.use((req, res) => {
