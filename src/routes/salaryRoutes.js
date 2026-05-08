@@ -28,4 +28,7 @@ router.get('/daily-earnings', auth, salaryController.getDailyEarnings);
 // Payslip Detail
 router.get('/payslip/:history_id', auth, salaryController.getPayslip);
 
+// Detailed Dashboard History (Driver)
+router.get('/dashboard-history', auth, salaryController.getDetailedDashboardHistory);
+
 module.exports = router;

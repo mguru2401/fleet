@@ -274,28 +274,35 @@ const getAdminSalaryDashboard = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Error fetching trips' });
     }
 
-    // 3. Get all unpaid advances
-    const { data: allAdvances, error: advancesError } = await supabase
-      .from('advances')
-      .select('*')
-      .eq('status', 'unpaid');
-
-    if (advancesError) {
-      console.error('Error fetching advances:', advancesError);
-    }
-
-    // 4. Get all salary history for the month (to check paid/pending status)
+    // 3. Get all salary history for the month (to check paid/pending status)
     const { data: monthHistory } = await supabase
       .from('salary_history')
-      .select('driver_id, status, payment_method, advances_deducted, cash_collected, final_salary, basic_pay')
+      .select('id, driver_id, status, payment_method, advances_deducted, cash_collected, final_salary, basic_pay')
       .eq('month', targetMonth)
       .eq('year', targetYear);
+
+    const settlementIds = (monthHistory || []).map(h => h.id).filter(id => id);
+
+    // 4. Get relevant advances (Unpaid OR linked to this month's settlements)
+    let advancesQuery = supabase.from('advances').select('*');
+    if (settlementIds.length > 0) {
+      advancesQuery = advancesQuery.or(`status.eq.unpaid,settlement_id.in.(${settlementIds.map(id => `"${id}"`).join(',')})`);
+    } else {
+      advancesQuery = advancesQuery.eq('status', 'unpaid');
+    }
+
+    const { data: allAdvances, error: advancesError } = await advancesQuery;
 
     // 5. Process data for each driver
     const salaryDashboard = drivers.map(driver => {
       const driverTrips = allTrips.filter(t => t.driver_id === driver.id);
-      const driverAdvances = (allAdvances || []).filter(a => a.driver_id === driver.id);
       const driverHistory = (monthHistory || []).find(h => h.driver_id === driver.id);
+      
+      // Filter for unpaid advances OR advances linked specifically to this driver's history record for this month
+      const driverAdvances = (allAdvances || []).filter(a => 
+        a.driver_id === driver.id && 
+        (a.status === 'unpaid' || (driverHistory && a.settlement_id === driverHistory.id))
+      );
       
       const revenuePerDay = parseFloat(driver.revenue_per_day) || 0;
       const stats = calculateDetailedStats(driverTrips, revenuePerDay);
@@ -337,7 +344,8 @@ const getAdminSalaryDashboard = async (req, res) => {
           base_pay: Math.round(stats.totalBase),
           incentives: Math.round(stats.totalIncentive),
           ola_uber_commission: Math.round(stats.totalOlaUberSalary)
-        }
+        },
+        advances_list: driverAdvances || []
       };
     });
 

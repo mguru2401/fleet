@@ -178,22 +178,7 @@ const settleSalary = async (req, res) => {
 
     const targetMonth = parseInt(month);
     const targetYear = parseInt(year);
-
-    // Check if already settled
-    const { data: existingSettlement } = await supabase
-      .from('salary_history')
-      .select('id')
-      .eq('driver_id', driver_id)
-      .eq('month', targetMonth)
-      .eq('year', targetYear)
-      .single();
-
-    if (existingSettlement) {
-      return res.status(400).json({
-        success: false,
-        message: 'Salary for this month and year is already settled'
-      });
-    }
+    const paymentMethod = payment_method;
 
     const { data: driver } = await supabase.from('users').select('revenue_per_day').eq('id', driver_id).single();
     const revenuePerDay = parseFloat(driver.revenue_per_day) || 0;
@@ -259,15 +244,6 @@ const settleSalary = async (req, res) => {
     // Final settlement: Salary earned - Advances - Cash already in driver's hand
     const finalSalary = totalMonthlySalary - totalAdvances - cashCollected;
 
-    // Start Settlement
-    if (advances && advances.length > 0) {
-      const advanceIds = advances.map(a => a.id);
-      await supabase
-        .from('advances')
-        .update({ status: 'paid', updated_at: new Date().toISOString() })
-        .in('id', advanceIds);
-    }
-
     const { data: history, error: historyError } = await supabase
       .from('salary_history')
       .insert({
@@ -289,6 +265,21 @@ const settleSalary = async (req, res) => {
 
     if (historyError) {
       return res.status(400).json({ success: false, message: 'Error creating settlement record', error: historyError.message });
+    }
+
+    const newHistoryId = history[0].id;
+
+    // Start Settlement - Link advances to this specific history record
+    if (advances && advances.length > 0) {
+      const advanceIds = advances.map(a => a.id);
+      await supabase
+        .from('advances')
+        .update({ 
+          status: 'paid', 
+          settlement_id: newHistoryId, // Link it!
+          updated_at: new Date().toISOString() 
+        })
+        .in('id', advanceIds);
     }
 
     return res.status(201).json({ success: true, message: 'Salary settled successfully', data: history[0] });
@@ -453,7 +444,21 @@ const getDailyEarnings = async (req, res) => {
 const getSalaryHistory = async (req, res) => {
   try {
     const { driver_id, month, year } = req.query;
-    let query = supabase.from('salary_history').select('*, users(name)');
+    let query = supabase.from('salary_history').select(`
+      *,
+      users:driver_id (
+        id, 
+        name, 
+        email, 
+        employee_no, 
+        mobile_no, 
+        revenue_per_day,
+        car:car_id (
+          name,
+          car_no
+        )
+      )
+    `);
     if (driver_id) query = query.eq('driver_id', driver_id);
     if (month) query = query.eq('month', parseInt(month));
     if (year) query = query.eq('year', parseInt(year));
@@ -479,6 +484,163 @@ const getMySalaryHistory = async (req, res) => {
     return res.status(200).json({ success: true, data: history });
   } catch (error) {
     console.error('Error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// Get Comprehensive Salary Dashboard History (Driver)
+const getDetailedDashboardHistory = async (req, res) => {
+  try {
+    const driver_id = req.user.id;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    // 1. Get Driver Details
+    const { data: driver } = await supabase
+      .from('users')
+      .select('name, revenue_per_day, desired_salary')
+      .eq('id', driver_id)
+      .single();
+
+    const revenuePerDay = parseFloat(driver.revenue_per_day) || 0;
+    const desiredSalary = parseFloat(driver.desired_salary) || 0;
+
+    // 2. Get Current Month's Data (Live Calculation)
+    const startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+    const lastDay = new Date(currentYear, currentMonth, 0).getDate();
+    const endDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const { data: trips } = await supabase
+      .from('trips')
+      .select('pick_up_date, trip_rate, category, net_amount')
+      .eq('driver_id', driver_id)
+      .gte('pick_up_date', startDate)
+      .lte('pick_up_date', endDate);
+
+    const { data: unpaidAdvances } = await supabase
+      .from('advances')
+      .select('*')
+      .eq('driver_id', driver_id)
+      .eq('status', 'unpaid');
+
+    const dailyEarnings = {};
+    (trips || []).forEach(trip => {
+      const date = trip.pick_up_date;
+      if (!dailyEarnings[date]) {
+        dailyEarnings[date] = { total_revenue: 0, ola_uber_revenue: 0, other_revenue: 0 };
+      }
+      const amount = (trip.net_amount !== undefined && trip.net_amount !== null) ? parseFloat(trip.net_amount) : parseFloat(trip.trip_rate);
+      const val = amount || 0;
+      dailyEarnings[date].total_revenue += val;
+
+      const category = trip.category ? trip.category.toLowerCase() : '';
+      if (category === 'ola' || category === 'uber') {
+        dailyEarnings[date].ola_uber_revenue += val;
+      } else {
+        dailyEarnings[date].other_revenue += val;
+      }
+    });
+
+    let currentMonthSalary = 0;
+    let currentMonthRevenue = 0;
+    let currentMonthCashCollected = 0;
+
+    Object.values(dailyEarnings).forEach(dayData => {
+      let daySalary = 0;
+      if (dayData.other_revenue > 0 && dayData.total_revenue >= revenuePerDay) {
+        const excess = Math.max(0, dayData.other_revenue - revenuePerDay);
+        daySalary = BASE_SALARY_PER_DAY + (excess * INCENTIVE_PERCENTAGE);
+        if (dayData.ola_uber_revenue > 0) {
+          daySalary += (dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE);
+        }
+      } else {
+        daySalary = dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE;
+      }
+      currentMonthSalary += daySalary;
+      currentMonthRevenue += dayData.total_revenue;
+      currentMonthCashCollected += dayData.ola_uber_revenue;
+    });
+
+    const totalUnpaidAdvances = (unpaidAdvances || []).reduce((sum, a) => sum + parseFloat(a.amount), 0);
+    const currentMonthFinalPayable = currentMonthSalary - totalUnpaidAdvances - currentMonthCashCollected;
+
+    // 3. Get Past Salary History (Settled)
+    const { data: settledHistory } = await supabase
+      .from('salary_history')
+      .select('*')
+      .eq('driver_id', driver_id)
+      .order('year', { ascending: false })
+      .order('month', { ascending: false });
+
+    // 4. Calculate settlement totals for current month
+    const currentMonthSettlements = (settledHistory || []).filter(h => h.month === currentMonth && h.year === currentYear);
+    const totalAlreadyPaid = currentMonthSettlements.reduce((sum, h) => sum + parseFloat(h.final_salary), 0);
+    const isSettled = currentMonthSettlements.length > 0;
+
+    // Remaining balance is what was calculated live minus what was already paid
+    const remainingBalance = currentMonthFinalPayable - totalAlreadyPaid;
+
+    // Determine status
+    let displayStatus = 'pending';
+    if (isSettled) {
+      displayStatus = remainingBalance <= 10 ? 'paid' : 'partially_paid'; // 10 is a small rounding buffer
+    }
+
+    // Filter out current month from history to prevent replication
+    const filteredHistory = (settledHistory || []).filter(h => !(h.month === currentMonth && h.year === currentYear));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        driver_details: {
+          name: driver.name,
+          revenue_target: revenuePerDay,
+          goal_salary: desiredSalary
+        },
+        current_month: {
+          month: currentMonth,
+          year: currentYear,
+          status: displayStatus,
+          summary: {
+            total_revenue: Math.round(currentMonthRevenue),
+            total_salary_earned: Math.round(currentMonthSalary),
+            advances_deducted: Math.round(totalUnpaidAdvances),
+            cash_collected: Math.round(currentMonthCashCollected),
+            already_paid: Math.round(totalAlreadyPaid),
+            remaining_balance: Math.max(0, Math.round(remainingBalance))
+          },
+          goal_progress: {
+            desired_salary: Math.round(desiredSalary),
+            so_far_salary: Math.round(currentMonthSalary),
+            achievement_percentage: desiredSalary > 0 ? Math.round((currentMonthSalary / desiredSalary) * 100) : 0
+          },
+          unpaid_advances: (unpaidAdvances || []),
+          settlements_this_month: currentMonthSettlements.map(s => ({
+            id: s.id,
+            amount: s.final_salary,
+            date: s.settled_at,
+            method: s.payment_method
+          }))
+        },
+        settled_history: (filteredHistory || []).map(h => ({
+          id: h.id,
+          month: h.month,
+          year: h.year,
+          settled_at: h.settled_at,
+          total_revenue: Math.round(h.actual_revenue),
+          salary_earned: Math.round(h.basic_pay),
+          advances_deducted: Math.round(h.advances_deducted),
+          cash_collected: Math.round(h.cash_collected || 0),
+          final_paid: Math.round(h.final_salary),
+          payment_method: h.payment_method,
+          status: h.status
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching dashboard history:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -551,7 +713,8 @@ module.exports = {
   setDesiredSalary,
   getSalaryVsDesired,
   getDailyEarnings,
-  getPayslip
+  getPayslip,
+  getDetailedDashboardHistory
 };
 
 

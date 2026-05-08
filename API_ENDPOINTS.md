@@ -385,9 +385,68 @@ Content-Type: application/json
 }
 ```
 
+### 7. Detailed Dashboard History (Driver) - `/api/salary/dashboard-history`
+**GET** `http://localhost:3000/api/salary/dashboard-history`
+**Description:** Returns a comprehensive view of the driver's current month performance (live calculation) and past settled salary history records.
+**Auth Required:** Yes (Driver)
+
+**Success Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "driver_details": {
+      "name": "Raj Kumar",
+      "revenue_target": 3000,
+      "goal_salary": 45000
+    },
+    "current_month": {
+      "month": 5,
+      "year": 2026,
+      "status": "pending",
+      "summary": {
+        "total_revenue": 15600,
+        "total_salary_earned": 8450,
+        "advances_deducted": 500,
+        "cash_collected": 1200,
+        "final_payable": 6750
+      },
+      "goal_progress": {
+        "desired_salary": 45000,
+        "so_far_salary": 8450,
+        "achievement_percentage": 19
+      },
+      "unpaid_advances": [
+        {
+          "id": "uuid",
+          "amount": 500,
+          "date": "2026-05-04",
+          "description": "Emergency"
+        }
+      ]
+    },
+    "settled_history": [
+      {
+        "id": "uuid",
+        "month": 4,
+        "year": 2026,
+        "settled_at": "2026-05-02T10:00:00Z",
+        "total_revenue": 85000,
+        "salary_earned": 42000,
+        "advances_deducted": 2000,
+        "cash_collected": 5000,
+        "final_paid": 35000,
+        "payment_method": "UPI",
+        "status": "paid"
+      }
+    ]
+  }
+}
+```
+
 ---
 
-### 7. Daily Earnings History (Driver) - `/api/salary/daily-earnings`
+### 8. Daily Earnings History (Driver) - `/api/salary/daily-earnings`
 **GET** `http://localhost:3000/api/salary/daily-earnings?start_date=2026-05-01&end_date=2026-05-07`
 
 **Response (200):**
