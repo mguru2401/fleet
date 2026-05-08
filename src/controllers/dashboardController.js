@@ -169,11 +169,12 @@ const getAdminDashboard = async (req, res) => {
 
     const { data: drivers, error: driversError } = await supabase
       .from('users')
-      .select('id, name, revenue_per_day, desired_salary')
-      .eq('role', 'user');
+      .select('id, name, role, revenue_per_day, desired_salary')
+      .neq('role', 'admin');
 
     if (driversError) {
-      return res.status(400).json({ success: false, message: 'Error fetching drivers' });
+      console.error('Admin Dashboard - Drivers Error:', driversError);
+      return res.status(400).json({ success: false, message: 'Error fetching drivers', error: driversError.message });
     }
 
     const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
@@ -187,7 +188,8 @@ const getAdminDashboard = async (req, res) => {
       .lte('pick_up_date', endDate);
 
     if (tripsError) {
-      return res.status(400).json({ success: false, message: 'Error fetching trips' });
+      console.error('Admin Dashboard - Trips Error:', tripsError);
+      return res.status(400).json({ success: false, message: 'Error fetching trips', error: tripsError.message });
     }
 
     const dashboardData = drivers.map(driver => {
