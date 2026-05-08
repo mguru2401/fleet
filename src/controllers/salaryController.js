@@ -94,9 +94,9 @@ const calculateSalary = async (req, res) => {
       let type = '';
       let eligibleForIncentive = 0;
 
-      if (dayData.other_revenue >= revenuePerDay) {
+      if (dayData.other_revenue > 0 && dayData.total_revenue >= revenuePerDay) {
         // Standard rule: Base + 30% of excess over revenue_per_day
-        eligibleForIncentive = dayData.other_revenue - revenuePerDay;
+        eligibleForIncentive = Math.max(0, dayData.other_revenue - revenuePerDay);
         daySalary = BASE_SALARY_PER_DAY + (eligibleForIncentive * INCENTIVE_PERCENTAGE);
         
         // Add 30% of any Ola/Uber revenue on the same day
@@ -109,7 +109,7 @@ const calculateSalary = async (req, res) => {
       } else {
         // Target not met or only Ola/Uber
         daySalary = dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE;
-        type = dayData.other_revenue > 0 ? 'Target Not Met (0 Salary)' : 'Ola/Uber Only (30%)';
+        type = (dayData.other_revenue > 0 && dayData.total_revenue < revenuePerDay) ? 'Target Not Met (0 Salary)' : 'Ola/Uber Only (30%)';
       }
 
       totalMonthlySalary += daySalary;
@@ -230,10 +230,12 @@ const settleSalary = async (req, res) => {
 
     let totalMonthlySalary = 0;
     let totalActualRevenue = 0;
+    let cashCollected = 0;
+
     Object.values(dailyEarnings).forEach(dayData => {
       let daySalary = 0;
-      if (dayData.other_revenue >= revenuePerDay) {
-        const excess = dayData.other_revenue - revenuePerDay;
+      if (dayData.other_revenue > 0 && dayData.total_revenue >= revenuePerDay) {
+        const excess = Math.max(0, dayData.other_revenue - revenuePerDay);
         daySalary = BASE_SALARY_PER_DAY + (excess * INCENTIVE_PERCENTAGE);
         if (dayData.ola_uber_revenue > 0) {
           daySalary += (dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE);
@@ -243,6 +245,7 @@ const settleSalary = async (req, res) => {
       }
       totalMonthlySalary += daySalary;
       totalActualRevenue += dayData.total_revenue;
+      cashCollected += dayData.ola_uber_revenue;
     });
 
     const { data: advances } = await supabase
@@ -252,7 +255,9 @@ const settleSalary = async (req, res) => {
       .eq('status', 'unpaid');
 
     const totalAdvances = (advances || []).reduce((sum, a) => sum + parseFloat(a.amount), 0);
-    const finalSalary = totalMonthlySalary - totalAdvances;
+    
+    // Final settlement: Salary earned - Advances - Cash already in driver's hand
+    const finalSalary = totalMonthlySalary - totalAdvances - cashCollected;
 
     // Start Settlement
     if (advances && advances.length > 0) {
@@ -273,6 +278,7 @@ const settleSalary = async (req, res) => {
         basic_pay: Math.round(totalMonthlySalary),
         target_revenue: Math.round(Object.keys(dailyEarnings).length * revenuePerDay),
         actual_revenue: Math.round(totalActualRevenue),
+        cash_collected: Math.round(cashCollected),
         incentive: 0,
         advances_deducted: Math.round(totalAdvances),
         final_salary: Math.round(finalSalary),
@@ -365,8 +371,8 @@ const getSalaryVsDesired = async (req, res) => {
 
     let soFarSalary = 0;
     Object.values(dailyEarnings).forEach(dayData => {
-      if (dayData.other_revenue >= revenuePerDay) {
-        const excess = dayData.other_revenue - revenuePerDay;
+      if (dayData.other_revenue > 0 && dayData.total_revenue >= revenuePerDay) {
+        const excess = Math.max(0, dayData.other_revenue - revenuePerDay);
         soFarSalary += (BASE_SALARY_PER_DAY + (excess * INCENTIVE_PERCENTAGE));
         if (dayData.ola_uber_revenue > 0) {
           soFarSalary += (dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE);
@@ -477,6 +483,66 @@ const getMySalaryHistory = async (req, res) => {
   }
 };
 
+// Get Detailed Payslip
+const getPayslip = async (req, res) => {
+  try {
+    const { history_id } = req.params;
+    const driver_id = req.user.id;
+    const role = req.user.role;
+
+    let query = supabase
+      .from('salary_history')
+      .select('*, users(name, employee_no, revenue_per_day, mobile_no)')
+      .eq('id', history_id);
+
+    // If not admin, can only see own payslip
+    if (role !== 'admin') {
+      query = query.eq('driver_id', driver_id);
+    }
+
+    const { data: history, error } = await query.single();
+
+    if (error || !history) {
+      return res.status(404).json({ success: false, message: 'Payslip not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        payslip_no: `PAY-${history.id.substring(0, 8).toUpperCase()}`,
+        date: history.settled_at,
+        driver_details: {
+          name: history.users.name,
+          employee_no: history.users.employee_no,
+          mobile: history.users.mobile_no
+        },
+        period: {
+          month: history.month,
+          year: history.year,
+          working_days: history.working_days
+        },
+        earnings: {
+          calculated_total_salary: history.basic_pay,
+          actual_revenue_generated: history.actual_revenue,
+          target_revenue: history.target_revenue
+        },
+        deductions: {
+          advances_settled: history.advances_deducted,
+          cash_already_collected: history.cash_collected || 0
+        },
+        final_payment: {
+          amount_paid: history.final_salary,
+          method: history.payment_method,
+          status: history.status
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching payslip:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
 module.exports = {
   calculateSalary,
   settleSalary,
@@ -484,7 +550,8 @@ module.exports = {
   getMySalaryHistory,
   setDesiredSalary,
   getSalaryVsDesired,
-  getDailyEarnings
+  getDailyEarnings,
+  getPayslip
 };
 
 

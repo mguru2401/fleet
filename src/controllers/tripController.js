@@ -106,7 +106,7 @@ const createTrip = async (req, res) => {
 // Get All Trips
 const getAllTrips = async (req, res) => {
   try {
-    const { limit = 50, offset = 0, category, driver_id, pick_up_date } = req.query;
+    const { limit = 50, offset = 0, category, driver_id, pick_up_date, start_date, end_date } = req.query;
 
     let query = supabase.from('trips').select('*');
 
@@ -119,6 +119,12 @@ const getAllTrips = async (req, res) => {
     }
     if (pick_up_date) {
       query = query.eq('pick_up_date', pick_up_date);
+    }
+    if (start_date) {
+      query = query.gte('pick_up_date', start_date);
+    }
+    if (end_date) {
+      query = query.lte('pick_up_date', end_date);
     }
 
     const { data: trips, error, count } = await query
@@ -329,7 +335,7 @@ const deleteTrip = async (req, res) => {
 const getTripsByDriver = async (req, res) => {
   try {
     const { driverId } = req.params;
-    const { limit = 50, offset = 0, month, year, category } = req.query;
+    const { limit = 50, offset = 0, month, year, category, start_date, end_date } = req.query;
 
     if (!driverId) {
       return res.status(400).json({
@@ -346,6 +352,14 @@ const getTripsByDriver = async (req, res) => {
     // Apply category filter if provided
     if (category) {
       query = query.eq('category', category);
+    }
+
+    // Apply date range filters if provided
+    if (start_date) {
+      query = query.gte('pick_up_date', start_date);
+    }
+    if (end_date) {
+      query = query.lte('pick_up_date', end_date);
     }
 
     // Apply month and year filters if provided

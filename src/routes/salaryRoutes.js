@@ -25,4 +25,7 @@ router.get('/goal-status', auth, salaryController.getSalaryVsDesired);
 // Daily Earnings History (Driver)
 router.get('/daily-earnings', auth, salaryController.getDailyEarnings);
 
+// Payslip Detail
+router.get('/payslip/:history_id', auth, salaryController.getPayslip);
+
 module.exports = router;
