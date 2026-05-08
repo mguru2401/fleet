@@ -283,12 +283,16 @@ const getAdminSalaryDashboard = async (req, res) => {
 
     const settlementIds = (monthHistory || []).map(h => h.id).filter(id => id);
 
-    // 4. Get relevant advances (Unpaid OR linked to this month's settlements)
+    // 4. Get relevant advances (Unpaid and dated within/before this month OR linked to this month's settlements)
     let advancesQuery = supabase.from('advances').select('*');
+    
+    // Condition for unpaid: must be on or before the end of the target month
+    const unpaidCondition = `and(status.eq.unpaid,date.lte.${endDate})`;
+    
     if (settlementIds.length > 0) {
-      advancesQuery = advancesQuery.or(`status.eq.unpaid,settlement_id.in.(${settlementIds.map(id => `"${id}"`).join(',')})`);
+      advancesQuery = advancesQuery.or(`${unpaidCondition},settlement_id.in.(${settlementIds.map(id => `"${id}"`).join(',')})`);
     } else {
-      advancesQuery = advancesQuery.eq('status', 'unpaid');
+      advancesQuery = advancesQuery.filter('status', 'eq', 'unpaid').filter('date', 'lte', endDate);
     }
 
     const { data: allAdvances, error: advancesError } = await advancesQuery;
@@ -387,7 +391,8 @@ const getDriverSalaryDashboard = async (req, res) => {
       .from('advances')
       .select('*')
       .eq('driver_id', driver_id)
-      .eq('status', 'unpaid');
+      .eq('status', 'unpaid')
+      .lte('date', endDate);
 
     const { data: history } = await supabase
       .from('salary_history')
