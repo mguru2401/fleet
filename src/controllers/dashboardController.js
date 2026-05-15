@@ -48,19 +48,14 @@ const calculateDetailedStats = (trips, revenuePerDay) => {
     let dayIncentive = 0;
     let dayOlaUber = 0;
 
-    if (dayData.other_revenue > 0 && dayData.total_revenue >= revenuePerDay) {
+    if (dayData.other_revenue > 0) {
+      // If there's at least one non-Ola/Uber trip
       dayBase = BASE_SALARY_PER_DAY;
-      // Incentive is only on the "Other" revenue part that exceeds the target
-      const eligibleForIncentive = Math.max(0, dayData.other_revenue - revenuePerDay);
-      dayIncentive = eligibleForIncentive * INCENTIVE_PERCENTAGE;
-      dayOlaUber = dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE;
-      daySalary = dayBase + dayIncentive + dayOlaUber;
-    } else if (dayData.other_revenue > 0 && dayData.total_revenue < revenuePerDay) {
-      // Target not met even with total revenue, and has other trips
-      dayBase = 0;
-      dayIncentive = 0;
-      dayOlaUber = dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE;
-      daySalary = dayOlaUber;
+      // Incentive is 30% of total revenue exceeding the target
+      const totalExcess = Math.max(0, dayData.total_revenue - revenuePerDay);
+      dayIncentive = totalExcess * INCENTIVE_PERCENTAGE;
+      dayOlaUber = 0; // In this case, Ola/Uber revenue is part of the total revenue calculation
+      daySalary = dayBase + dayIncentive;
     } else {
       // Ola/Uber only day
       dayBase = 0;
