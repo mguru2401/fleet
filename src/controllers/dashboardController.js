@@ -16,8 +16,7 @@ const calculateDetailedStats = (trips, revenuePerDay) => {
     if (!dailyEarnings[date]) {
       dailyEarnings[date] = {
         total_revenue: 0,
-        ola_uber_revenue: 0,
-        other_revenue: 0
+        working_day: false
       };
     }
     
@@ -29,54 +28,43 @@ const calculateDetailedStats = (trips, revenuePerDay) => {
     dailyEarnings[date].total_revenue += val;
 
     const category = trip.category ? trip.category.toLowerCase() : '';
-    if (category === 'ola' || category === 'uber') {
-      dailyEarnings[date].ola_uber_revenue += val;
-    } else {
-      dailyEarnings[date].other_revenue += val;
+    if (category !== 'ola' && category !== 'uber') {
+      dailyEarnings[date].working_day = true;
     }
   });
 
-  let totalSalary = 0;
   let totalRevenue = 0;
-  let totalIncentive = 0;
+  let totalTargetedRevenue = 0;
   let totalBase = 0;
-  let totalOlaUberSalary = 0;
+  let workingDaysCount = 0;
 
   Object.values(dailyEarnings).forEach(dayData => {
-    let daySalary = 0;
-    let dayBase = 0;
-    let dayIncentive = 0;
-    let dayOlaUber = 0;
-
-    if (dayData.other_revenue > 0) {
-      // If there's at least one non-Ola/Uber trip
-      dayBase = BASE_SALARY_PER_DAY;
-      // Incentive is 30% of total revenue exceeding the target
-      const totalExcess = Math.max(0, dayData.total_revenue - revenuePerDay);
-      dayIncentive = totalExcess * INCENTIVE_PERCENTAGE;
-      dayOlaUber = 0; // In this case, Ola/Uber revenue is part of the total revenue calculation
-      daySalary = dayBase + dayIncentive;
-    } else {
-      // Ola/Uber only day
-      dayBase = 0;
-      dayIncentive = 0;
-      dayOlaUber = dayData.ola_uber_revenue * OLA_UBER_PERCENTAGE;
-      daySalary = dayOlaUber;
-    }
-
-    totalSalary += daySalary;
     totalRevenue += dayData.total_revenue;
-    totalIncentive += dayIncentive;
-    totalBase += dayBase;
-    totalOlaUberSalary += dayOlaUber;
+    if (dayData.working_day) {
+      totalBase += BASE_SALARY_PER_DAY;
+      totalTargetedRevenue += revenuePerDay;
+      workingDaysCount++;
+    } else {
+      // Non-working day: Target is 0
+      totalTargetedRevenue += 0;
+    }
   });
+
+  // Incentive till today = 30% * max(0, Actual Revenue - Targeted Revenue)
+  const eligibleIncentiveAmount = Math.max(0, totalRevenue - totalTargetedRevenue);
+  const totalIncentive = eligibleIncentiveAmount * INCENTIVE_PERCENTAGE;
+  
+  // Total Salary = Total Base + Total Incentive
+  const totalSalary = totalBase + totalIncentive;
 
   return {
     totalSalary,
     totalRevenue,
     totalBase,
     totalIncentive,
-    totalOlaUberSalary
+    eligibleIncentiveAmount,
+    totalTargetedRevenue,
+    workingDaysCount
   };
 };
 
@@ -135,16 +123,23 @@ const getDriverDashboard = async (req, res) => {
         remaining_to_goal: Math.max(0, Math.round(desiredSalary - monthStats.totalSalary)),
         achievement_percentage: desiredSalary > 0 ? Math.round((monthStats.totalSalary / desiredSalary) * 100) : 0,
         
+        actual_revenue_mtd: Math.round(monthStats.totalRevenue),
+        targeted_revenue_mtd: Math.round(monthStats.totalTargetedRevenue),
+        eligible_incentive_amount_mtd: Math.round(monthStats.eligibleIncentiveAmount),
+        incentive_mtd: Math.round(monthStats.totalIncentive),
+        cumulative_base_salary_mtd: Math.round(monthStats.totalBase),
+        total_working_days_mtd: monthStats.workingDaysCount,
+        revenue_target_per_day: Math.round(revenuePerDay),
+
         today_salary: Math.round(todayStats.totalSalary),
         today_revenue: Math.round(todayStats.totalRevenue),
-        target_revenue_per_day: Math.round(revenuePerDay),
-        revenue_vs_target_diff: Math.round(todayStats.totalRevenue - revenuePerDay),
+        today_target: Math.round(todayStats.totalTargetedRevenue),
         
         salary_details: {
-          base_salary: Math.round(todayStats.totalBase),
-          incentive_salary: Math.round(todayStats.totalIncentive),
-          ola_uber_salary: Math.round(todayStats.totalOlaUberSalary),
-          total_today_salary: Math.round(todayStats.totalSalary)
+          base_salary: Math.round(monthStats.totalBase),
+          eligible_amount: Math.round(monthStats.eligibleIncentiveAmount),
+          incentive_salary: Math.round(monthStats.totalIncentive),
+          total_earned_salary: Math.round(monthStats.totalSalary)
         },
         
         today_trips: todayTrips
@@ -209,15 +204,22 @@ const getAdminDashboard = async (req, res) => {
         remaining_to_goal: Math.max(0, Math.round(desiredSalary - monthStats.totalSalary)),
         achievement_percentage: desiredSalary > 0 ? Math.round((monthStats.totalSalary / desiredSalary) * 100) : 0,
         
+        actual_revenue_mtd: Math.round(monthStats.totalRevenue),
+        targeted_revenue_mtd: Math.round(monthStats.totalTargetedRevenue),
+        eligible_incentive_amount_mtd: Math.round(monthStats.eligibleIncentiveAmount),
+        incentive_mtd: Math.round(monthStats.totalIncentive),
+        cumulative_base_salary_mtd: Math.round(monthStats.totalBase),
+        total_working_days_mtd: monthStats.workingDaysCount,
+        revenue_target_per_day: Math.round(revenuePerDay),
+
         today_salary: Math.round(todayStats.totalSalary),
         today_revenue: Math.round(todayStats.totalRevenue),
-        target_revenue_per_day: Math.round(revenuePerDay),
         
         salary_details: {
-          base_salary: Math.round(todayStats.totalBase),
-          incentive_salary: Math.round(todayStats.totalIncentive),
-          ola_uber_salary: Math.round(todayStats.totalOlaUberSalary),
-          total_today_salary: Math.round(todayStats.totalSalary)
+          base_salary: Math.round(monthStats.totalBase),
+          eligible_amount: Math.round(monthStats.eligibleIncentiveAmount),
+          incentive_salary: Math.round(monthStats.totalIncentive),
+          total_earned_salary: Math.round(monthStats.totalSalary)
         },
         
         today_trips_count: todayTrips.length,
@@ -282,17 +284,26 @@ const getAdminSalaryDashboard = async (req, res) => {
     let advancesQuery = supabase.from('advances').select('*');
     
     // Condition for unpaid: must be on or before the end of the target month
-    const unpaidCondition = `and(status.eq.unpaid,date.lte.${endDate})`;
+    const unpaidCondition = `and(status.eq.unpaid,date.gte.${startDate},date.lte.${endDate})`;
     
     if (settlementIds.length > 0) {
       advancesQuery = advancesQuery.or(`${unpaidCondition},settlement_id.in.(${settlementIds.map(id => `"${id}"`).join(',')})`);
     } else {
-      advancesQuery = advancesQuery.filter('status', 'eq', 'unpaid').filter('date', 'lte', endDate);
+      advancesQuery = advancesQuery.filter('status', 'eq', 'unpaid').gte('date', startDate).lte('date', endDate);
     }
 
     const { data: allAdvances, error: advancesError } = await advancesQuery;
 
-    // 5. Process data for each driver
+    // 5. Get all expenses for these drivers in this month
+    const driverIds = drivers.map(d => d.id);
+    const { data: allExpenses } = await supabase
+      .from('expenses')
+      .select('*')
+      .in('driver_id', driverIds)
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    // 6. Process data for each driver
     const salaryDashboard = drivers.map(driver => {
       const driverTrips = allTrips.filter(t => t.driver_id === driver.id);
       const driverHistory = (monthHistory || []).find(h => h.driver_id === driver.id);
@@ -310,18 +321,22 @@ const getAdminSalaryDashboard = async (req, res) => {
         ? parseFloat(driverHistory.advances_deducted) 
         : driverAdvances.reduce((sum, a) => sum + parseFloat(a.amount), 0);
       
+      const olaUberTrips = driverTrips.filter(t => t.category && (t.category.toLowerCase() === 'ola' || t.category.toLowerCase() === 'uber'));
+
       const cashCollected = driverHistory
         ? parseFloat(driverHistory.cash_collected)
-        : driverTrips
-          .filter(t => t.category && (t.category.toLowerCase() === 'ola' || t.category.toLowerCase() === 'uber'))
-          .reduce((sum, t) => {
+        : olaUberTrips.reduce((sum, t) => {
             const amount = (t.net_amount !== undefined && t.net_amount !== null) ? parseFloat(t.net_amount) : parseFloat(t.trip_rate);
             return sum + (amount || 0);
           }, 0);
 
+      const driverExpenses = (allExpenses || []).filter(e => e.driver_id === driver.id);
+
+      const totalExpenses = (driverExpenses || []).reduce((sum, e) => sum + parseFloat(e.amount), 0);
+
       const finalPayable = driverHistory
         ? parseFloat(driverHistory.final_salary)
-        : stats.totalSalary - totalAdvances - cashCollected;
+        : stats.totalSalary - (cashCollected - totalExpenses) - totalAdvances;
 
       const totalSalaryEarned = driverHistory
         ? parseFloat(driverHistory.basic_pay)
@@ -334,17 +349,25 @@ const getAdminSalaryDashboard = async (req, res) => {
         year: targetYear,
         status: driverHistory ? driverHistory.status : 'pending',
         payment_method: driverHistory ? driverHistory.payment_method : null,
-        total_salary_earned: Math.round(totalSalaryEarned),
+        actual_revenue_mtd: Math.round(stats.totalRevenue),
+        targeted_revenue_mtd: Math.round(stats.totalTargetedRevenue),
+        eligible_incentive_amount_mtd: Math.round(stats.eligibleIncentiveAmount),
+        incentive_mtd: Math.round(stats.totalIncentive),
+        total_salary_earned: Math.round(stats.totalSalary),
+        total_working_days_mtd: stats.workingDaysCount,
         total_advances: Math.round(totalAdvances),
+        total_expenses: Math.round(totalExpenses),
         cash_revenue_collected: Math.round(cashCollected),
-        amount_remaining_in_hand: Math.round(cashCollected),
+        net_cash_in_hand: Math.round(cashCollected - totalExpenses),
         final_company_payable: Math.round(finalPayable),
         breakdown: {
           base_pay: Math.round(stats.totalBase),
-          incentives: Math.round(stats.totalIncentive),
-          ola_uber_commission: Math.round(stats.totalOlaUberSalary)
+          eligible_amount: Math.round(stats.eligibleIncentiveAmount),
+          incentives: Math.round(stats.totalIncentive)
         },
-        advances_list: driverAdvances || []
+        advances_list: driverAdvances || [],
+        expense_list: driverExpenses || [],
+        ola_uber_trips_list: olaUberTrips || []
       };
     });
 
@@ -387,6 +410,7 @@ const getDriverSalaryDashboard = async (req, res) => {
       .select('*')
       .eq('driver_id', driver_id)
       .eq('status', 'unpaid')
+      .gte('date', startDate)
       .lte('date', endDate);
 
     const { data: history } = await supabase
@@ -404,18 +428,27 @@ const getDriverSalaryDashboard = async (req, res) => {
       ? parseFloat(history.advances_deducted) 
       : (advances || []).reduce((sum, a) => sum + parseFloat(a.amount), 0);
     
+    const olaUberTrips = (trips || []).filter(t => t.category && (t.category.toLowerCase() === 'ola' || t.category.toLowerCase() === 'uber'));
+
     const cashCollected = history
       ? parseFloat(history.cash_collected)
-      : (trips || [])
-        .filter(t => t.category && (t.category.toLowerCase() === 'ola' || t.category.toLowerCase() === 'uber'))
-        .reduce((sum, t) => {
+      : olaUberTrips.reduce((sum, t) => {
           const amount = (t.net_amount !== undefined && t.net_amount !== null) ? parseFloat(t.net_amount) : parseFloat(t.trip_rate);
           return sum + (amount || 0);
         }, 0);
 
+    const { data: driverExpenses } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('driver_id', driver_id)
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    const totalExpenses = (driverExpenses || []).reduce((sum, e) => sum + parseFloat(e.amount), 0);
+
     const finalPayable = history
       ? parseFloat(history.final_salary)
-      : stats.totalSalary - totalAdvances - cashCollected;
+      : stats.totalSalary - (cashCollected - totalExpenses) - totalAdvances;
 
     const totalSalaryEarned = history
       ? parseFloat(history.basic_pay)
@@ -430,16 +463,25 @@ const getDriverSalaryDashboard = async (req, res) => {
         year: targetYear,
         status: history ? history.status : 'pending',
         payment_method: history ? history.payment_method : null,
-        total_salary_earned: Math.round(totalSalaryEarned),
+        actual_revenue_mtd: Math.round(stats.totalRevenue),
+        targeted_revenue_mtd: Math.round(stats.totalTargetedRevenue),
+        eligible_incentive_amount_mtd: Math.round(stats.eligibleIncentiveAmount),
+        incentive_mtd: Math.round(stats.totalIncentive),
+        total_salary_earned: Math.round(stats.totalSalary),
+        total_working_days_mtd: stats.workingDaysCount,
         total_advances: Math.round(totalAdvances),
+        total_expenses: Math.round(totalExpenses),
         cash_revenue_collected: Math.round(cashCollected),
+        net_cash_in_hand: Math.round(cashCollected - totalExpenses),
         final_company_payable: Math.round(finalPayable),
         breakdown: {
           base_pay: Math.round(stats.totalBase),
-          incentives: Math.round(stats.totalIncentive),
-          ola_uber_commission: Math.round(stats.totalOlaUberSalary)
+          eligible_amount: Math.round(stats.eligibleIncentiveAmount),
+          incentives: Math.round(stats.totalIncentive)
         },
-        advances_list: advances || []
+        advances_list: advances || [],
+        expense_list: driverExpenses || [],
+        ola_uber_trips_list: olaUberTrips || []
       }
     });
   } catch (error) {
