@@ -277,10 +277,10 @@ const getExpenseBreakdownByCar = async (req, res) => {
       .lte('date', endDate)
       .order('date', { ascending: false });
 
-    // 2. Fetch trips for revenue
+    // 2. Fetch trips with extra fields for salary calculation (driver_id, net_amount, category, pick_up_date)
     const { data: trips, error: tripError } = await supabase
       .from('trips')
-      .select('car_no, trip_rate')
+      .select('car_no, trip_rate, category, net_amount, pick_up_date, driver_id')
       .gte('pick_up_date', startDate)
       .lte('pick_up_date', endDate);
 
@@ -291,49 +291,159 @@ const getExpenseBreakdownByCar = async (req, res) => {
       .gte('date', startDate)
       .lte('date', endDate);
 
-    if (expenseError || tripError) {
+    // 4. Fetch all drivers (non-admins) along with their car details
+    const { data: drivers, error: driversError } = await supabase
+      .from('users')
+      .select('id, name, role, revenue_per_day, desired_salary, car_id, cars(car_no)')
+      .neq('role', 'admin');
+
+    // 5. Fetch salary history for the month
+    const { data: salaryHistory, error: historyError } = await supabase
+      .from('salary_history')
+      .select('driver_id, basic_pay, final_salary')
+      .eq('month', filterMonth)
+      .eq('year', filterYear);
+
+    if (expenseError || tripError || advanceError || driversError || historyError) {
       return res.status(400).json({
         success: false,
         message: 'Error fetching financial data',
-        error: expenseError?.message || tripError?.message
+        error: expenseError?.message || tripError?.message || advanceError?.message || driversError?.message || historyError?.message
       });
     }
 
+    // --- Helper to calculate salary for a driver for the month ---
+    const BASE_SALARY_PER_DAY = 1136.36;
+    const INCENTIVE_PERCENTAGE = 0.30;
+
+    const calculateDriverSalary = (driverTrips, revenuePerDay) => {
+      const dailyEarnings = {};
+      
+      (driverTrips || []).forEach(trip => {
+        const date = trip.pick_up_date;
+        if (!dailyEarnings[date]) {
+          dailyEarnings[date] = {
+            total_revenue: 0,
+            working_day: false
+          };
+        }
+        
+        const amount = (trip.net_amount !== undefined && trip.net_amount !== null) 
+          ? parseFloat(trip.net_amount) 
+          : parseFloat(trip.trip_rate);
+        const val = amount || 0;
+        
+        dailyEarnings[date].total_revenue += val;
+
+        const category = trip.category ? trip.category.toLowerCase() : '';
+        if (category !== 'ola' && category !== 'uber') {
+          dailyEarnings[date].working_day = true;
+        }
+      });
+
+      let totalRevenue = 0;
+      let totalTargetedRevenue = 0;
+      let totalBase = 0;
+
+      Object.values(dailyEarnings).forEach(dayData => {
+        totalRevenue += dayData.total_revenue;
+        if (dayData.working_day) {
+          totalBase += BASE_SALARY_PER_DAY;
+          totalTargetedRevenue += revenuePerDay;
+        }
+      });
+
+      const eligibleIncentiveAmount = Math.max(0, totalRevenue - totalTargetedRevenue);
+      const totalIncentive = eligibleIncentiveAmount * INCENTIVE_PERCENTAGE;
+      const totalSalary = totalBase + totalIncentive;
+
+      return totalSalary;
+    };
+
+    // --- Process driver salaries and associate with cars ---
+    const carSalariesMap = {};
+    (drivers || []).forEach(driver => {
+      const driverTrips = (trips || []).filter(t => t.driver_id === driver.id);
+      const historyRecord = (salaryHistory || []).find(h => h.driver_id === driver.id);
+      
+      const driverSalary = historyRecord 
+        ? parseFloat(historyRecord.basic_pay) 
+        : calculateDriverSalary(driverTrips, parseFloat(driver.revenue_per_day) || 0);
+
+      // Determine car_no for driver
+      let driverCarNo = 'N/A';
+      if (driver.cars && driver.cars.car_no) {
+        driverCarNo = driver.cars.car_no;
+      } else {
+        // Fallback: Find the most frequent car_no in driver's trips
+        if (driverTrips.length > 0) {
+          const carCounts = {};
+          driverTrips.forEach(t => {
+            if (t.car_no) {
+              carCounts[t.car_no] = (carCounts[t.car_no] || 0) + 1;
+            }
+          });
+          const sortedCars = Object.keys(carCounts).sort((a, b) => carCounts[b] - carCounts[a]);
+          if (sortedCars.length > 0) {
+            driverCarNo = sortedCars[0];
+          }
+        }
+      }
+
+      if (!carSalariesMap[driverCarNo]) {
+        carSalariesMap[driverCarNo] = {
+          driver_salaries: 0,
+          salary_entries: []
+        };
+      }
+      carSalariesMap[driverCarNo].driver_salaries += driverSalary;
+      carSalariesMap[driverCarNo].salary_entries.push({
+        driver_id: driver.id,
+        driver_name: driver.name,
+        salary: Math.round(driverSalary),
+        is_settled: !!historyRecord
+      });
+    });
+
     const breakdownMap = {};
-    let grandTotalExpense = 0;
-    let grandTotalRevenue = 0;
-    let grandTotalAdvances = 0;
 
     const initCar = (carNo) => {
       if (!breakdownMap[carNo]) {
         breakdownMap[carNo] = {
           car_no: carNo,
-          total_expense: 0,
           total_revenue: 0,
+          driver_expenses: 0, // regular expenses from expenses table
           total_advances: 0,
+          driver_salaries: 0,
+          total_expense: 0, // driver_expenses + total_advances + driver_salaries
+          net_profit: 0,
           expense_entries: [],
-          advance_entries: []
+          advance_entries: [],
+          salary_entries: []
         };
       }
     };
 
-    expenses.forEach(e => {
+    // Group expenses by car_no
+    (expenses || []).forEach(e => {
       const carNo = e.car_no || 'N/A';
       initCar(carNo);
       const amount = parseFloat(e.amount) || 0;
       breakdownMap[carNo].expense_entries.push(e);
-      breakdownMap[carNo].total_expense += amount;
-      grandTotalExpense += amount;
+      breakdownMap[carNo].driver_expenses += amount;
     });
 
-    trips.forEach(t => {
+    // Group trips (revenue) by car_no
+    (trips || []).forEach(t => {
       const carNo = t.car_no || 'N/A';
       initCar(carNo);
-      const rate = parseFloat(t.trip_rate) || 0;
+      // Prefer net_amount if available, otherwise trip_rate
+      const amount = (t.net_amount !== undefined && t.net_amount !== null) ? parseFloat(t.net_amount) : parseFloat(t.trip_rate);
+      const rate = amount || 0;
       breakdownMap[carNo].total_revenue += rate;
-      grandTotalRevenue += rate;
     });
 
+    // Group advances by car_no
     if (advances) {
       advances.forEach(a => {
         const carNo = a.car_no || 'N/A';
@@ -341,26 +451,68 @@ const getExpenseBreakdownByCar = async (req, res) => {
         const amount = parseFloat(a.amount) || 0;
         breakdownMap[carNo].advance_entries.push(a);
         breakdownMap[carNo].total_advances += amount;
-        grandTotalAdvances += amount;
       });
     }
 
-    const breakdownArray = Object.values(breakdownMap).map(item => ({
-      ...item,
-      total_out: item.total_expense + item.total_advances,
-      net_profit: item.total_revenue - (item.total_expense + item.total_advances)
-    }));
+    // Merge driver salaries into breakdown map
+    Object.keys(carSalariesMap).forEach(carNo => {
+      initCar(carNo);
+      breakdownMap[carNo].driver_salaries = carSalariesMap[carNo].driver_salaries;
+      breakdownMap[carNo].salary_entries = carSalariesMap[carNo].salary_entries;
+    });
+
+    // Calculate final totals and array
+    let grandTotalRevenue = 0;
+    let grandTotalDriverExpenses = 0;
+    let grandTotalAdvances = 0;
+    let grandTotalSalaries = 0;
+    let grandTotalExpense = 0;
+    let grandTotalNetProfit = 0;
+
+    const breakdownArray = Object.values(breakdownMap).map(item => {
+      const driver_expenses = Math.round(item.driver_expenses * 100) / 100;
+      const total_advances = Math.round(item.total_advances * 100) / 100;
+      const driver_salaries = Math.round(item.driver_salaries * 100) / 100;
+      const total_revenue = Math.round(item.total_revenue * 100) / 100;
+      
+      const total_expense = Math.round((driver_expenses + total_advances + driver_salaries) * 100) / 100;
+      const net_profit = Math.round((total_revenue - total_expense) * 100) / 100;
+
+      // Update grand totals
+      grandTotalRevenue += total_revenue;
+      grandTotalDriverExpenses += driver_expenses;
+      grandTotalAdvances += total_advances;
+      grandTotalSalaries += driver_salaries;
+      grandTotalExpense += total_expense;
+      grandTotalNetProfit += net_profit;
+
+      return {
+        car_no: item.car_no,
+        total_revenue,
+        driver_expenses,
+        total_advances,
+        driver_salaries,
+        total_expense,
+        total_out: total_expense, // alias for backwards compatibility
+        net_profit,
+        expense_entries: item.expense_entries,
+        advance_entries: item.advance_entries,
+        salary_entries: item.salary_entries
+      };
+    });
 
     return res.status(200).json({
       success: true,
       message: 'Expense and Revenue breakdown retrieved successfully',
       period: { month: filterMonth, year: filterYear, startDate, endDate },
       summary: {
-        total_revenue: grandTotalRevenue,
-        total_expense: grandTotalExpense,
-        total_advances: grandTotalAdvances,
-        total_out: grandTotalExpense + grandTotalAdvances,
-        net_profit: grandTotalRevenue - (grandTotalExpense + grandTotalAdvances),
+        total_revenue: Math.round(grandTotalRevenue * 100) / 100,
+        driver_expenses: Math.round(grandTotalDriverExpenses * 100) / 100,
+        total_expense: Math.round(grandTotalExpense * 100) / 100,
+        total_advances: Math.round(grandTotalAdvances * 100) / 100,
+        driver_salaries: Math.round(grandTotalSalaries * 100) / 100,
+        total_out: Math.round(grandTotalExpense * 100) / 100, // alias for backwards compatibility
+        net_profit: Math.round(grandTotalNetProfit * 100) / 100,
         car_count: breakdownArray.length
       },
       data: breakdownArray
