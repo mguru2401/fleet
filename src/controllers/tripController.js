@@ -335,7 +335,7 @@ const deleteTrip = async (req, res) => {
 const getTripsByDriver = async (req, res) => {
   try {
     const { driverId } = req.params;
-    const { limit = 50, offset = 0, month, year, category, start_date, end_date } = req.query;
+    const { limit, offset = 0, month, year, category, start_date, end_date } = req.query;
 
     if (!driverId) {
       return res.status(400).json({
@@ -399,9 +399,20 @@ const getTripsByDriver = async (req, res) => {
         .lte('pick_up_date', endDate);
     }
 
-    const { data: trips, error } = await query
-      .order('created_at', { ascending: false })
-      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+    // Order by pickup date, time, and creation time descending to show newest first chronologically
+    query = query
+      .order('pick_up_date', { ascending: false })
+      .order('pick_up_time', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    // Apply pagination range only if limit is explicitly provided
+    if (limit) {
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = parseInt(offset);
+      query = query.range(parsedOffset, parsedOffset + parsedLimit - 1);
+    }
+
+    const { data: trips, error } = await query;
 
     if (error) {
       console.error('Error fetching driver trips:', error);

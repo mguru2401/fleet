@@ -615,8 +615,8 @@ const getDetailedDashboardHistory = async (req, res) => {
       .from('expenses')
       .select('*')
       .eq('driver_id', driver_id)
-      .gte('date', currentMonthStartDate)
-      .lte('date', currentMonthEndDate);
+      .gte('date', startDate)
+      .lte('date', endDate);
 
     const currentMonthTotalExpenses = (currentMonthExpenses || []).reduce((sum, e) => sum + parseFloat(e.amount), 0);
     const currentMonthNetCashInHand = currentMonthCashCollected - currentMonthTotalExpenses;
@@ -676,7 +676,7 @@ const getDetailedDashboardHistory = async (req, res) => {
             remaining_balance: Math.max(0, Math.round(remainingBalance))
           },
           expense_list: currentMonthExpenses || [],
-          ola_uber_trips_list: currentMonthTrips.filter(t => t.category && (t.category.toLowerCase() === 'ola' || t.category.toLowerCase() === 'uber')),
+          ola_uber_trips_list: (trips || []).filter(t => t.category && (t.category.toLowerCase() === 'ola' || t.category.toLowerCase() === 'uber')),
           goal_progress: {
             desired_salary: Math.round(desiredSalary),
             so_far_salary: Math.round(currentMonthSalary),
