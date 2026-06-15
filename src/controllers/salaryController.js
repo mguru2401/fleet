@@ -92,14 +92,14 @@ const calculateSalary = async (req, res) => {
       const dayData = dailyEarnings[date];
       const cats = Array.from(dayData.categories);
       
-      const isWorkingDay = dayData.other_revenue > 0;
-      const dayTarget = isWorkingDay ? revenuePerDay : 0;
-      const dayBase = isWorkingDay ? BASE_SALARY_PER_DAY : 0;
+      // Every day with any trip earns base salary and counts toward target
+      const dayTarget = revenuePerDay;
+      const dayBase = BASE_SALARY_PER_DAY;
 
       totalActualRevenue += dayData.total_revenue;
       totalTargetedRevenue += dayTarget;
       totalBase += dayBase;
-      if (isWorkingDay) workingDaysCount++;
+      workingDaysCount++;
 
       // Cumulative Incentive till this date
       const eligibleAmount = Math.max(0, totalActualRevenue - totalTargetedRevenue);
@@ -110,7 +110,7 @@ const calculateSalary = async (req, res) => {
         date,
         day_revenue: Math.round(dayData.total_revenue * 100) / 100,
         day_target: dayTarget,
-        is_working_day: isWorkingDay,
+        is_working_day: true,
         cumulative_actual_revenue: Math.round(totalActualRevenue * 100) / 100,
         cumulative_targeted_revenue: Math.round(totalTargetedRevenue * 100) / 100,
         cumulative_eligible_amount: Math.round(eligibleAmount * 100) / 100,
@@ -118,7 +118,7 @@ const calculateSalary = async (req, res) => {
         cumulative_base_salary: Math.round(totalBase * 100) / 100,
         cumulative_salary_earned: Math.round(currentSalary * 100) / 100,
         categories: cats,
-        type: isWorkingDay ? 'Working Day (Base + Incentive)' : 'Non-Working Day (Incentive Only)'
+        type: dayData.other_revenue > 0 ? 'Working Day (Base + Incentive)' : 'Ola/Uber Day (Base + Incentive)'
       });
     });
 
@@ -251,10 +251,9 @@ const settleSalary = async (req, res) => {
       totalActualRevenue += dayData.total_revenue;
       cashCollected += dayData.ola_uber_revenue;
 
-      if (dayData.other_revenue > 0) {
-        totalBase += BASE_SALARY_PER_DAY;
-        totalTargetedRevenue += revenuePerDay;
-      }
+      // Every day with any trip earns base salary and counts toward target
+      totalBase += BASE_SALARY_PER_DAY;
+      totalTargetedRevenue += revenuePerDay;
     });
 
     const totalEligibleAmount = Math.max(0, totalActualRevenue - totalTargetedRevenue);
@@ -406,10 +405,10 @@ const getSalaryVsDesired = async (req, res) => {
 
     Object.values(dailyEarnings).forEach(dayData => {
       totalActualRevenue += dayData.total_revenue;
-      if (dayData.other_revenue > 0) {
-        totalBase += BASE_SALARY_PER_DAY;
-        totalTargetedRevenue += revenuePerDay;
-      }
+
+      // Every day with any trip earns base salary and counts toward target
+      totalBase += BASE_SALARY_PER_DAY;
+      totalTargetedRevenue += revenuePerDay;
     });
 
     const totalEligibleAmount = Math.max(0, totalActualRevenue - totalTargetedRevenue);
@@ -600,10 +599,9 @@ const getDetailedDashboardHistory = async (req, res) => {
       currentMonthRevenue += dayData.total_revenue;
       currentMonthCashCollected += dayData.ola_uber_revenue;
 
-      if (dayData.other_revenue > 0) {
-        currentMonthBase += BASE_SALARY_PER_DAY;
-        currentMonthTargetedRevenue += revenuePerDay;
-      }
+      // Every day with any trip earns base salary and counts toward target
+      currentMonthBase += BASE_SALARY_PER_DAY;
+      currentMonthTargetedRevenue += revenuePerDay;
     });
 
     const currentMonthEligibleAmount = Math.max(0, currentMonthRevenue - currentMonthTargetedRevenue);

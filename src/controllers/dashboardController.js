@@ -7,6 +7,13 @@ const OLA_UBER_PERCENTAGE = 0.30;
 
 /**
  * Helper to calculate salary and revenue details for a set of trips
+ *
+ * Salary rules:
+ *  - Every day the driver has ANY trip earns base salary (₹1136.36) and
+ *    counts toward the daily revenue target.
+ *  - workingDaysCount = days with at least one non-Ola/Uber trip (base salary days).
+ *  - totalDaysCount   = all distinct days with any trip (matches salary_history.working_days).
+ *  - Incentive = 30% × max(0, TotalRevenue − TotalTarget).
  */
 const calculateDetailedStats = (trips, revenuePerDay) => {
   const dailyEarnings = {};
@@ -16,7 +23,7 @@ const calculateDetailedStats = (trips, revenuePerDay) => {
     if (!dailyEarnings[date]) {
       dailyEarnings[date] = {
         total_revenue: 0,
-        working_day: false
+        has_non_ola_uber: false
       };
     }
     
@@ -29,7 +36,7 @@ const calculateDetailedStats = (trips, revenuePerDay) => {
 
     const category = trip.category ? trip.category.toLowerCase() : '';
     if (category !== 'ola' && category !== 'uber') {
-      dailyEarnings[date].working_day = true;
+      dailyEarnings[date].has_non_ola_uber = true;
     }
   });
 
@@ -40,21 +47,22 @@ const calculateDetailedStats = (trips, revenuePerDay) => {
 
   Object.values(dailyEarnings).forEach(dayData => {
     totalRevenue += dayData.total_revenue;
-    if (dayData.working_day) {
-      totalBase += BASE_SALARY_PER_DAY;
-      totalTargetedRevenue += revenuePerDay;
+
+    // Every day with any trip earns base salary and counts toward target
+    totalBase += BASE_SALARY_PER_DAY;
+    totalTargetedRevenue += revenuePerDay;
+
+    // workingDaysCount = days that have at least one non-Ola/Uber trip
+    if (dayData.has_non_ola_uber) {
       workingDaysCount++;
-    } else {
-      // Non-working day: Target is 0
-      totalTargetedRevenue += 0;
     }
   });
 
-  // Incentive till today = 30% * max(0, Actual Revenue - Targeted Revenue)
+  // Incentive = 30% × max(0, TotalRevenue − TotalTarget)
   const eligibleIncentiveAmount = Math.max(0, totalRevenue - totalTargetedRevenue);
   const totalIncentive = eligibleIncentiveAmount * INCENTIVE_PERCENTAGE;
   
-  // Total Salary = Total Base + Total Incentive
+  // Total Salary = Base Salary + Incentive
   const totalSalary = totalBase + totalIncentive;
 
   return {
@@ -64,7 +72,8 @@ const calculateDetailedStats = (trips, revenuePerDay) => {
     totalIncentive,
     eligibleIncentiveAmount,
     totalTargetedRevenue,
-    workingDaysCount
+    workingDaysCount,
+    totalDaysCount: Object.keys(dailyEarnings).length
   };
 };
 
@@ -128,7 +137,7 @@ const getDriverDashboard = async (req, res) => {
         eligible_incentive_amount_mtd: Math.round(monthStats.eligibleIncentiveAmount),
         incentive_mtd: Math.round(monthStats.totalIncentive),
         cumulative_base_salary_mtd: Math.round(monthStats.totalBase),
-        total_working_days_mtd: monthStats.workingDaysCount,
+        total_working_days_mtd: monthStats.totalDaysCount,
         revenue_target_per_day: Math.round(revenuePerDay),
 
         today_salary: Math.round(todayStats.totalSalary),
@@ -209,7 +218,7 @@ const getAdminDashboard = async (req, res) => {
         eligible_incentive_amount_mtd: Math.round(monthStats.eligibleIncentiveAmount),
         incentive_mtd: Math.round(monthStats.totalIncentive),
         cumulative_base_salary_mtd: Math.round(monthStats.totalBase),
-        total_working_days_mtd: monthStats.workingDaysCount,
+        total_working_days_mtd: monthStats.totalDaysCount,
         revenue_target_per_day: Math.round(revenuePerDay),
 
         today_salary: Math.round(todayStats.totalSalary),
@@ -354,7 +363,7 @@ const getAdminSalaryDashboard = async (req, res) => {
         eligible_incentive_amount_mtd: Math.round(stats.eligibleIncentiveAmount),
         incentive_mtd: Math.round(stats.totalIncentive),
         total_salary_earned: Math.round(stats.totalSalary),
-        total_working_days_mtd: stats.workingDaysCount,
+        total_working_days_mtd: stats.totalDaysCount,
         total_advances: Math.round(totalAdvances),
         total_expenses: Math.round(totalExpenses),
         cash_revenue_collected: Math.round(cashCollected),
@@ -468,7 +477,7 @@ const getDriverSalaryDashboard = async (req, res) => {
         eligible_incentive_amount_mtd: Math.round(stats.eligibleIncentiveAmount),
         incentive_mtd: Math.round(stats.totalIncentive),
         total_salary_earned: Math.round(stats.totalSalary),
-        total_working_days_mtd: stats.workingDaysCount,
+        total_working_days_mtd: stats.totalDaysCount,
         total_advances: Math.round(totalAdvances),
         total_expenses: Math.round(totalExpenses),
         cash_revenue_collected: Math.round(cashCollected),
