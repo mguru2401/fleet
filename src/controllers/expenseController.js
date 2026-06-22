@@ -186,6 +186,11 @@ const updateExpense = async (req, res) => {
     // Add updated_at timestamp
     updateData.updated_at = new Date().toISOString();
 
+    // The 'expenses' table doesn't have a 'car_id' column, so remove it if present
+    if ('car_id' in updateData) {
+      delete updateData.car_id;
+    }
+
     const { data: expense, error } = await supabase
       .from('expenses')
       .update(updateData)
