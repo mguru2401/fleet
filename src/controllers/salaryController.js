@@ -157,7 +157,7 @@ const calculateSalary = async (req, res) => {
       }, 0);
 
     const netCashInHand = cashCollected - totalExpenses;
-    const finalSalary = totalMonthlySalary - netCashInHand - totalAdvances;
+    const finalSalary = totalMonthlySalary - (totalAdvances + totalExpenses);
 
     return res.status(200).json({
       success: true,
@@ -280,8 +280,8 @@ const settleSalary = async (req, res) => {
     const totalExpenses = (driverExpenses || []).reduce((sum, e) => sum + parseFloat(e.amount), 0);
     const netCashInHand = cashCollected - totalExpenses;
     
-    // Final settlement: Salary earned - Net Cash In Hand - Advances
-    const finalSalary = totalMonthlySalary - totalAdvances - netCashInHand;
+    // Final settlement: Salary earned - (Advances + Expenses)
+    const finalSalary = totalMonthlySalary - (totalAdvances + totalExpenses);
 
     const { data: history, error: historyError } = await supabase
       .from('salary_history')
@@ -620,7 +620,7 @@ const getDetailedDashboardHistory = async (req, res) => {
     const currentMonthNetCashInHand = currentMonthCashCollected - currentMonthTotalExpenses;
 
     const totalUnpaidAdvances = (unpaidAdvances || []).reduce((sum, a) => sum + parseFloat(a.amount), 0);
-    const currentMonthFinalPayable = currentMonthSalary - currentMonthNetCashInHand - totalUnpaidAdvances;
+    const currentMonthFinalPayable = currentMonthSalary - (totalUnpaidAdvances + currentMonthTotalExpenses);
 
     // 3. Get Past Salary History (Settled)
     const { data: settledHistory } = await supabase

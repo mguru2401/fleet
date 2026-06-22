@@ -345,7 +345,7 @@ const getAdminSalaryDashboard = async (req, res) => {
 
       const finalPayable = driverHistory
         ? parseFloat(driverHistory.final_salary)
-        : stats.totalSalary - (cashCollected - totalExpenses) - totalAdvances;
+        : stats.totalSalary - (totalAdvances + totalExpenses);
 
       const totalSalaryEarned = driverHistory
         ? parseFloat(driverHistory.basic_pay)
@@ -457,7 +457,7 @@ const getDriverSalaryDashboard = async (req, res) => {
 
     const finalPayable = history
       ? parseFloat(history.final_salary)
-      : stats.totalSalary - (cashCollected - totalExpenses) - totalAdvances;
+      : stats.totalSalary - (totalAdvances + totalExpenses);
 
     const totalSalaryEarned = history
       ? parseFloat(history.basic_pay)
